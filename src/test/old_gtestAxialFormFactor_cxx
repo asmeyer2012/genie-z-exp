@@ -1,0 +1,133 @@
+//____________________________________________________________________________
+/*!
+
+\program gtestAxialFormFactor
+
+\brief   Program used for testing / debugging the axial form factor
+
+\author   Aaron Meyer <asmeyer2012 \at uchicago.edu>
+          based off testElFormFactors by
+          Costas Andreopoulos <costas.andreopoulos \at stfc.ac.uk>
+          STFC, Rutherford Appleton Laboratory
+
+\created August 20, 2013
+
+\cpright Copyright (c) 2003-2013, GENIE Neutrino MC Generator Collaboration
+         For the full text of the license visit http://copyright.genie-mc.org
+         or see $GENIE/LICENSE
+*/
+//____________________________________________________________________________
+
+#include <string>
+
+#include <TFile.h>
+#include <TNtupleD.h>
+
+#include "Algorithm/Algorithm.h"
+#include "Algorithm/AlgFactory.h"
+#include "Algorithm/AlgConfigPool.h"
+#include "Conventions/Constants.h"
+#include "GHEP/GHepParticle.h"
+#include "LlewellynSmith/AxialFormFactorModelI.h"
+#include "LlewellynSmith/AxialFormFactor.h"
+#include "Interaction/Interaction.h"
+#include "Messenger/Messenger.h"
+#include "PDG/PDGCodes.h"
+#include "PDG/PDGLibrary.h"
+#include "PDG/PDGUtils.h"
+#include "Utils/CmdLnArgParser.h"
+
+using namespace genie;
+using std::string;
+
+void GetCommandLineArgs (int argc, char ** argv);
+string  kDefOptEvFilePrefix = "test.axialff";
+string  gOptEvFilePrefix;
+
+//__________________________________________________________________________
+int main(int argc, char ** argv)
+{
+
+  GetCommandLineArgs(argc,argv);
+
+  TNtupleD * affnt = new TNtupleD("affnt","","Q2:mod:FA:z");
+
+  AlgFactory * algf = AlgFactory::Instance();
+
+  const AxialFormFactorModelI * dipole =
+      dynamic_cast<const AxialFormFactorModelI *> (
+        algf->GetAlgorithm("genie::DipoleAxialFormFactorModel", "Default"));
+  const AxialFormFactorModelI * zexp =
+      dynamic_cast<const AxialFormFactorModelI *> (
+        algf->GetAlgorithm("genie::ZExpAxialFormFactorModel", "Default"));
+
+  AxialFormFactor axff;
+
+  // get T0 from configuration default
+  AlgConfigPool * confp = AlgConfigPool::Instance();
+  const Registry * gc = confp->GlobalParameterList();
+
+  AlgId id("genie::ZExpAxialFormFactorModel","Default");
+  const Algorithm * alg = algf->GetAlgorithm(id);
+  Registry * r = confp->FindRegistry(alg);
+  //LOG("test", pINFO) << *r;
+  double t0 = r->GetDoubleDef("QEL-T0", gc->GetDouble("QEL-T0")); 
+
+  // set up interaction
+  Interaction * interaction = 
+         Interaction::QELCC(kPdgTgtFe56,kPdgProton,kPdgNuMu,0.02);
+
+  interaction->KinePtr()->SetQ2(0.);
+  double t     = interaction->KinePtr()->q2();
+  double tcut  = 9.0 * TMath::Power(constants::kPi0Mass, 2);
+
+  for(int iq=0; iq<160; iq++) {
+
+   //double Q2 = iq*0.01 + 0.01;                                 // linear
+   double Q2 = TMath::Exp((iq*0.025 + 0.025)*TMath::Log(10.)); // logarithmic
+   interaction->KinePtr()->SetQ2(Q2);
+
+   // calculate z parameter used in expansion
+   t = interaction->KinePtr()->q2();
+   double znum  = TMath::Sqrt(tcut - t) - TMath::Sqrt(tcut - t0);
+   double zden  = TMath::Sqrt(tcut - t) + TMath::Sqrt(tcut - t0);
+   double zpar = znum/zden;
+
+   if (zpar != zpar) LOG("testAxialFormFactor", pERROR) << "Undefined expansion parameter";
+
+   axff.SetModel(dipole);
+   axff.Calculate(interaction);
+   LOG("testAxialFormFactor", pINFO) << "Writing: Q2= " << Q2 <<" , FA= " << axff.FA();
+   LOG("testAxialFormFactor", pINFO) << "Writing: z= " << zpar;
+   affnt->Fill(Q2,0,axff.FA(),zpar);
+
+   axff.SetModel(zexp);
+   axff.Calculate(interaction);
+   LOG("testAxialFormFactor", pINFO) << "Axial  : Q2= " << Q2 <<" , FA= " << axff.FA();
+   affnt->Fill(Q2,1,axff.FA(),zpar);
+  }
+
+  TFile f((gOptEvFilePrefix + ".root").c_str(),"recreate");
+  affnt->Write();
+  f.Close();
+
+  return 0;
+}
+//__________________________________________________________________________
+void GetCommandLineArgs(int argc, char ** argv)
+{
+  LOG("gtestAxialFormFactor", pINFO) << "Parsing command line arguments";
+
+  CmdLnArgParser parser(argc,argv);
+
+  // event file prefix
+  if( parser.OptionExists('o') ) {
+    LOG("gtestAxialFormFactor", pINFO) << "Reading the event filename prefix";
+    gOptEvFilePrefix = parser.ArgAsString('o');
+  } else {
+    LOG("gtestAxialFormFactor", pDEBUG)
+      << "Will set the default event filename prefix";
+    gOptEvFilePrefix = kDefOptEvFilePrefix;
+  } //-o
+
+}
