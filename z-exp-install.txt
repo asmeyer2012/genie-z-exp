@@ -1,11 +1,36 @@
 ## git commands to install on a local genie directory structure (in GENIE top level directory):
 
+## -- initial setup
 git init
 git remote add origin https://github.com/asmeyer2012/genie-z-exp.git
 git fetch
-## NOTE - THIS NEXT COMMAND WILL OVERWRITE ALL THE LOCAL FILES TO MAKE THEM MATCH THE REPOSITORY
-##      - IF YOU WANT TO SAVE THEM, MAKE BACKUPS
-git reset --hard origin/master
 
-## then run make in src/LlewellynSmith and src/stdapp to finish
+## -- setting up a local branch which tracks repository changes
+git branch -f z-expansion origin/master
+## -- create a new branch for genie physics-grade copy (prevent overwriting anything)
+git checkout -b genie-trunk
+## -- add the files which would be otherwise overwritten
+## --  current list of files to add:
+##    - config/master_config.xml
+##    - config/UserPhysicsOptions.xml
+##    - config/LwlynSmithFFCC.xml
+##    - src/LlewellynSmith/LinkDef.h
+##    - src/LlewellynSmith/LwlynSmithFF.cxx
+##    - src/LlewellynSmith/LwlynSmithFF.h
+##    - src/test/Makefile
+git add <filename>
+## -- commit them to branch
+git commit
+
+## -- Now try switching to repository changes
+git checkout z-expansion
+## -- - If it fails with error saying files would be overwritten, add them and redo commit
+##
+## -- - If successful, you can now switch between physics-grade version of genie
+##      and z-expansion version by doing checkouts
+## 
+## -- - Go back to physics-grade version using:
+git checkout genie-trunk
+
+## run make in src/LlewellynSmith and src/stdapp to update binaries for current version
 
