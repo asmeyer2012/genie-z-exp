@@ -1,0 +1,11 @@
+## git commands to install on a local genie directory structure (in GENIE top level directory):
+
+git init
+git remote add origin https://github.com/asmeyer2012/genie-z-exp.git
+git fetch
+## NOTE - THIS NEXT COMMAND WILL OVERWRITE ALL THE LOCAL FILES TO MAKE THEM MATCH THE REPOSITORY
+##      - IF YOU WANT TO SAVE THEM, MAKE BACKUPS
+git reset --hard origin/master
+
+## then run make in src/LlewellynSmith and src/stdapp to finish
+
