@@ -104,16 +104,6 @@ void ZExpAxialFormFactorModel::FixQ4Limit(void)
   // -- requires at least 5 parameters to do so --
   // 4 parameters for Q^4 behavior, 1 for normalization to FA(q2=0)=gA
 
-  /*
-  // just to make sure
-  if (fKmax > 6)
-  {
-    LOG("ZExpAxialFormFactorModel",pWARN) \
-        << "Too many parameters to fix limiting behavior, ignoring some...";
-    fKmax = 6;
-  }
-  */
-
   // will use A_0 and A_Kmax through A_Kmax-3 to do the fitting
   // calculate some useful numbers (redundancy for readability)
   double kp4 = (double)fKmax+4;
@@ -252,19 +242,6 @@ void ZExpAxialFormFactorModel::LoadConfig(void)
     fZ_An[ip] = fConfig->GetDoubleDef(alg_key.str(),
                                       gc->GetDouble(alg_key.str()));
   }
-
-  /*
-  fZ_An[1]  = fConfig->GetDoubleDef("QEL-Z_A1" , gc->GetDouble("QEL-Z_A1" ));
-  fZ_An[2]  = fConfig->GetDoubleDef("QEL-Z_A2" , gc->GetDouble("QEL-Z_A2" ));
-  fZ_An[3]  = fConfig->GetDoubleDef("QEL-Z_A3" , gc->GetDouble("QEL-Z_A3" ));
-  fZ_An[4]  = fConfig->GetDoubleDef("QEL-Z_A4" , gc->GetDouble("QEL-Z_A4" ));
-  fZ_An[5]  = fConfig->GetDoubleDef("QEL-Z_A5" , gc->GetDouble("QEL-Z_A5" ));
-  fZ_An[6]  = fConfig->GetDoubleDef("QEL-Z_A6" , gc->GetDouble("QEL-Z_A6" ));
-  fZ_An[7]  = fConfig->GetDoubleDef("QEL-Z_A7" , gc->GetDouble("QEL-Z_A7" ));
-  fZ_An[8]  = fConfig->GetDoubleDef("QEL-Z_A8" , gc->GetDouble("QEL-Z_A8" ));
-  fZ_An[9]  = fConfig->GetDoubleDef("QEL-Z_A9" , gc->GetDouble("QEL-Z_A9" ));
-  fZ_An[10] = fConfig->GetDoubleDef("QEL-Z_A10", gc->GetDouble("QEL-Z_A10"));
-  */
 
   this->FixCoeffs();
 }

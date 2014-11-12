@@ -110,8 +110,6 @@ int main(int argc, char ** argv)
     }
   }
 
-  //TNtupleD * affnt = new TNtupleD("affnt","","Q2:mod:Kmax:FA:z:cA1:cA2:cA3:cA4");
-  // Tree, Form factor, registry
   TTree * affnt = new TTree("affnt","Axial Form Factor Test Tree");
   AxialFormFactor axff;
   AlgFactory * algf = AlgFactory::Instance();
@@ -157,21 +155,7 @@ int main(int argc, char ** argv)
 
   // Get T0 from registry value
   double t0 = r->GetDoubleDef("QEL-T0", gc->GetDouble("QEL-T0")); 
-
   //Kmax      = r->GetIntDef( "QEL-Kmax", gc->GetInt ("QEL-Kmax")); 
-
-  //if (Kmax != gOptKmaxInc && gOptKmaxInc > 0) LOG("testAxialFormFactor",pWARN) 
-  //   << "Kmax in User Physics Options does not match number of ranges";
-  //if (Kmax < gOptKmaxInc)
-  //{
-  //  LOG("testAxialFormFactor",pWARN) 
-  //    << "Too many coefficient ranges, will not work as expected";
-  //  LOG("testAxialFormFactor",pWARN) 
-  //    << "Only using first " << Kmax << " ranges";
-  //  LOG("testAxialFormFactor",pWARN) 
-  //    << "To enable more, change Kmax in User Physics Options";
-  //  gOptKmaxInc = Kmax;
-  //}
 
   // make sure coefficients are getting incremented correctly
   if (gOptKmaxInc != Kmax)
@@ -257,25 +241,6 @@ void CalculateFormFactor(AxialFormFactor axff,
   double t     = interaction->KinePtr()->q2();
   double tcut  = 9.0 * TMath::Power(constants::kPi0Mass, 2);
   double Q2    = 0.;
-
-  //for (int ip=1;ip<gOptKmaxInc+1;ip++)
-  //{
-  //  ostringstream alg_key;
-  //  alg_key << "QEL-Z_A" << ip;
-  //  r->Set(alg_key.str(),gOptCoeffMin[ip-1];
-  //}
-
-  //double* coef = new double[*params.pKmax];
-  //for (int ip=1;ip<gOptKmaxInc+1;ip++)
-  //{
-  //  ostringstream alg_key;
-  //  alg_key << "QEL-Z_A" << ip;
-  //  params.pcAn[ip-1] = r->GetDoubleDef(alg_key.str(),gc->GetDouble(alg_key.str()));
-  //}
-  //double coef1 = r->GetDoubleDef("QEL-Z_A1", gc->GetDouble("QEL-Z_A1")); 
-  //double coef2 = r->GetDoubleDef("QEL-Z_A2", gc->GetDouble("QEL-Z_A2")); 
-  //double coef3 = r->GetDoubleDef("QEL-Z_A3", gc->GetDouble("QEL-Z_A3")); 
-  //double coef4 = r->GetDoubleDef("QEL-Z_A4", gc->GetDouble("QEL-Z_A4")); 
                                                                                             
   for(int iq=0; iq<N_TREE; iq++) { 
                                                                                             
@@ -289,7 +254,6 @@ void CalculateFormFactor(AxialFormFactor axff,
 
    interaction->KinePtr()->SetQ2(Q2);
    *params.pQ2 = Q2;
-   //LOG("testAxialFormFactor", pERROR) << "Q2 = " << Q2;
                                                                                             
    // calculate z parameter used in expansion
    t = interaction->KinePtr()->q2();
@@ -302,21 +266,15 @@ void CalculateFormFactor(AxialFormFactor axff,
 
    axff.SetModel(dipole);
    axff.Calculate(interaction);
-   //LOG("testAxialFormFactor", pINFO) << "Writing: Q2= " << Q2 <<" , FA= " << axff.FA();
-   //LOG("testAxialFormFactor", pINFO) << "Writing: z= " << zpar;
-   //affnt->Fill(Q2,0,Kmax,axff.FA(),zpar,coef1,coef2,coef3,coef4);
    *params.pmod = 0;
    *params.pFA  = axff.FA();
    affnt->Fill();
                                                                                             
    axff.SetModel(zexp);
    axff.Calculate(interaction);
-   //LOG("testAxialFormFactor", pINFO) << "Axial  : Q2= " << Q2 <<" , FA= " << axff.FA();
-   //affnt->Fill(Q2,1,Kmax,axff.FA(),zpar,coef1,coef2,coef3,coef4);
    *params.pmod = 1;
    *params.pFA = axff.FA();
    affnt->Fill();
-   //LOG("testAxialFormFactor", pERROR) << r->GetDoubleDef("QEL-Z_A1", gc->GetDouble("QEL-Z_A1"));
    
   }
 }
@@ -326,17 +284,6 @@ bool IncrementCoefficients(double* coefmin, double* coefmax, double* coefinc, \
           AlgFactory * algf, Registry* r, const Registry * gc)
 
 {
-
-  //double coef1 = r->GetDoubleDef("QEL-Z_A1", gc->GetDouble("QEL-Z_A1")); 
-  //double coef2 = r->GetDoubleDef("QEL-Z_A2", gc->GetDouble("QEL-Z_A2")); 
-  //double coef3 = r->GetDoubleDef("QEL-Z_A3", gc->GetDouble("QEL-Z_A3")); 
-  //double coef4 = r->GetDoubleDef("QEL-Z_A4", gc->GetDouble("QEL-Z_A4")); 
-
-  // LOG("testAxialFormFactor",pINFO) << "Pre-Updated coefficients:";
-  // LOG("testAxialFormFactor",pINFO) << "  ( " << coef1 
-  //                                  << "  "   << coef2 
-  //                                  << "  "   << coef3 
-  //                                  << "  "   << coef4 << "  )";
 
   if (kmaxinc < 1)
   {
@@ -361,38 +308,7 @@ bool IncrementCoefficients(double* coefmin, double* coefmax, double* coefinc, \
     
   } while (ip < kmaxinc && params.pcAn[ip] < coefmax[ip]); // loop
 
-  //coef1 += coefinc[0];
-  //if (coef1 >= coefmax[0] && kmaxinc > 1)
-  //{
-  //// we know that coef1 won't be incremented again this time, just set it now
-  //r->Set("QEL-Z_A1",coefmin[0]);
-  //coef2 += coefinc[1];
-  //if (coef2 >= coefmax[1] && kmaxinc > 2)
-  //{
-  //r->Set("QEL-Z_A2",coefmin[1]);
-  //coef3 += coefinc[2];
-  //if (coef3 >= coefmax[2] && kmaxinc > 3)
-  //{
-  //r->Set("QEL-Z_A3",coefmin[2]);
-  //coef4 += coefinc[3];
-  //if (coef4 >= coefmax[3] && kmaxinc > 4)
-  //{
-  //  // no more coefficients to increment
-  //  return false;
-  //
-  //} else if (coef4 < coefmax[3]) { r->Set("QEL-Z_A4",coef4); }
-  //  else { return false; } // coefficient 4 (last)
-
-  //} else if (coef3 < coefmax[2]) { r->Set("QEL-Z_A3",coef3); }
-  //  else { return false; } // coefficient 3
-
-  //} else if (coef2 < coefmax[1]) { r->Set("QEL-Z_A2",coef2); }
-  //  else { return false; } // coefficient 2
-
-  //} else if (coef1 < coefmax[0]) { r->Set("QEL-Z_A1",coef1); }
-  //  else { return false; } // coefficient 1
-
-  }
+  } // if kmaxinc < 1
 
   algf->ForceReconfiguration();
   return true;
