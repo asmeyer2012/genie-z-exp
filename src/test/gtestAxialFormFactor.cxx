@@ -20,7 +20,8 @@
          -o  output filename prefix for root file output
          -c  allows scanning over z-expansion coefficients
              -- must give a multiple of 3 numbers as arguments: min, max, increment
-             -- will scan over at most 4 coefficients and fill ntuple tree with all entries
+             -- will scan over at most MAX_COEF coefficients and fill ntuple tree with all entries
+             -- can change MAX_COEF and recompile as necessary
              -- to skip scanning over a coefficient, put max < min for that coefficient
              note that Kmax in UserPhysicsOptions should match the number of scanned coeffs
 
@@ -145,9 +146,15 @@ int main(int argc, char ** argv)
 
   // flag for single output or loop
   bool do_once = (gOptKmaxInc < 1);
+  bool do_Q4limit = r->GetBoolDef("QEL-Q4limit", gc->GetBool("QEL-Q4limit"));
 
   if (gOptKmaxInc < 1) Kmax = r->GetIntDef("QEL-Kmax", gc->GetInt("QEL-Kmax")); 
   else                 Kmax = gOptKmaxInc;
+  //if (do_Q4limit) Kmax = Kmax+4;
+  if (do_Q4limit) LOG("testAxialFormFactor",pWARN) \
+   << "Q4limit specified, note that coefficients will be altered";
+
+  // initialize to zero
   for (int ip=0;ip<MAX_COEF;ip++)
   {
     params.pcAn[ip] = 0.;
@@ -155,17 +162,8 @@ int main(int argc, char ** argv)
 
   // Get T0 from registry value
   double t0 = r->GetDoubleDef("QEL-T0", gc->GetDouble("QEL-T0")); 
-  //Kmax      = r->GetIntDef( "QEL-Kmax", gc->GetInt ("QEL-Kmax")); 
 
   // make sure coefficients are getting incremented correctly
-  if (gOptKmaxInc != Kmax)
-  {
-    LOG("testAxialFormFactor",pWARN) <<
-     "Number of default coefficients not equal to number of coefficient ranges";
-    LOG("testAxialFormFactor",pWARN) <<
-     "gOptKmaxInc = " << gOptKmaxInc << ", Kmax = " << Kmax;
-  }
-  if (0 < gOptKmaxInc) Kmax = gOptKmaxInc;
   if (MAX_COEF < gOptKmaxInc ||
      (gOptKmaxInc == 0 && MAX_COEF < Kmax) )
   {
@@ -174,24 +172,25 @@ int main(int argc, char ** argv)
     Kmax        = MAX_COEF;
     gOptKmaxInc = MAX_COEF;
   }
-  //LOG("testAxialFormFactor",pWARN) << "pKmax = " << *params.pKmax;
+  LOG("testAxialFormFactor",pWARN) << "pKmax = " << *params.pKmax;
 
   // set up interaction
   Interaction * interaction = 
          Interaction::QELCC(kPdgTgtFe56,kPdgProton,kPdgNuMu,0.02);
-
 
   if (do_once)
   { // calculate once and be done with it
 
     // pre-load parameters
     ostringstream alg_key;
-    for (int ip=1;ip<gOptKmaxInc+1;ip++)
+    for (int ip=1;ip<Kmax+1;ip++)
     {
       alg_key.str("");
       alg_key << "QEL-Z_A" << ip;
       params.pcAn[ip-1] =
         r->GetDoubleDef(alg_key.str(), gc->GetDouble(alg_key.str())); 
+      LOG("testAxialFormFactor",pINFO) << "Loading " << alg_key.str() \
+       << " : " << params.pcAn[ip-1];
     }
 
     CalculateFormFactor(axff,affnt,params,algf,r,gc,interaction,t0);//,t0,Kmax);
@@ -199,14 +198,15 @@ int main(int argc, char ** argv)
     // override and control coefficient values
     r->UnLock();
     r->Set("QEL-Kmax",*params.pKmax);
-    //algf->ForceReconfiguration();  // is this necessary?
 
     ostringstream alg_key;
     for (int ip=1;ip<gOptKmaxInc+1;ip++)
     {
       alg_key.str("");
       alg_key << "QEL-Z_A" << ip;
-      r->Set(alg_key.str(),gOptCoeffInc[ip-1]);
+      r->Set(alg_key.str(),gOptCoeffMin[ip-1]);
+      params.pcAn[ip-1] = gOptCoeffMin[ip-1];
+      LOG("testAxialFormFactor",pWARN) << "Set parameter: " << params.pcAn[ip-1];
     }
     algf->ForceReconfiguration();
 
@@ -293,20 +293,25 @@ bool IncrementCoefficients(double* coefmin, double* coefmax, double* coefinc, \
 
   ostringstream alg_key;
   int ip = -1;
+  bool stopflag;
   do
   {
-    if (ip > 0)
+    if (ip > -1)
     { // a previous iteration went over max
       params.pcAn[ip] = coefmin[ip];
       r->Set(alg_key.str(),params.pcAn[ip]);
     }
+    stopflag = true;
     alg_key.str("");                                      // reset sstream
     ip++;                                                 // increment index
+    if (ip == kmaxinc) return false;                      // stop if gone too far
     alg_key << "QEL-Z_A" << ip+1;                         // get new name
     params.pcAn[ip] += coefinc[ip];                       // increment parameter
     r->Set(alg_key.str(),params.pcAn[ip]);
-    
-  } while (ip < kmaxinc && params.pcAn[ip] < coefmax[ip]); // loop
+    if (params.pcAn[ip] > coefmax[ip]) stopflag=false;    
+
+  } while (! stopflag); // loop
+
 
   } // if kmaxinc < 1
 
@@ -354,8 +359,6 @@ void GetCommandLineArgs(int argc, char ** argv)
       gOptCoeffMin[ik] = atof(coefrange[ik*3  ].c_str());
       gOptCoeffMax[ik] = atof(coefrange[ik*3+1].c_str());
       gOptCoeffInc[ik] = atof(coefrange[ik*3+2].c_str());
-      assert( gOptCoeffMin[ik] < gOptCoeffMax[ik] || \
-              gOptCoeffInc[ik] < 0. );
     }
     
   }
