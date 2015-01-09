@@ -201,6 +201,11 @@ void ZExpAxialFormFactorModel::FixQ4Limit(void)
          +3.*(3*fKmax+4)*zkp3 - 3.*kp1*zkp4             )  \
   + b1*( -3.*kp3*kp2*zkp1 + 3.*kp3*(3*fKmax+4)*zkp2        \
          -3.*kp1*(3*fKmax+8)*zkp3 + 3.*kp2*kp1*zkp4     )  );
+
+  //LOG("ZExpAxialFormFactorModel",pWARN) << "z-expansion coefficients: ";
+  //for (int i=0;i<kp4+1;i++) {
+  //  LOG("ZExpAxialFormFactorModel",pWARN) << "a["<<i<<"] : "<<fZ_An[i];
+  //}
 }
 //____________________________________________________________________________
 void ZExpAxialFormFactorModel::Configure(const Registry & config)

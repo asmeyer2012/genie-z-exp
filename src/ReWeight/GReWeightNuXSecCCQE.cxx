@@ -58,7 +58,6 @@
 
 using namespace genie;
 using namespace genie::rew;
-//using namespace std;
 using std::ostringstream;
 
 const int GReWeightNuXSecCCQE::kModeMa;
@@ -148,7 +147,11 @@ void GReWeightNuXSecCCQE::SetSystematic(GSyst_t syst, double twk_dial)
       fMaTwkDial = twk_dial;
       break;
     case ( kXSecTwkDial_ZExpCCQE ) :
-      // z-expansion coefficients increment from 1, array starts at 0
+      //
+      // GReWeight::Reconfigure only fixes one value
+      // Fix others by explicitly looping over fZExpCurrIdx and
+      //  setting them with (GReWeightNuXSecCCQE object pointer)->SetSystematic
+      // 
       if (fZExpCurrIdx > -1 && fZExpCurrIdx < fZExpMaxCoef)
       {
         fZExpTwkDial[fZExpCurrIdx] = twk_dial;
@@ -181,8 +184,8 @@ void GReWeightNuXSecCCQE::ResetZExpSigma(void)
 {
   for (int i=0;i<fZExpMaxCoef;i++)
   {
-    fZExpSigmaLo[i] = 1.;
-    fZExpSigmaHi[i] = 1.;
+    fZExpSigmaLo[i] = .1;
+    fZExpSigmaHi[i] = .1;
   }
   this->Reconfigure();
 }
@@ -221,13 +224,12 @@ void GReWeightNuXSecCCQE::Reconfigure(void)
   if(fMode==kModeZExp && strcmp(fFFModel.c_str(),kModelZExp) == 0) {
      int    sign_twk = utils::rew::Sign(0.);
      double fracerr_zexp = 0.;
+     // loop over all indices and update each
      for (int i=0;i<fZExpMaxCoef;i++)
      {
        this->SetCurrZExpIdx(i);
        fracerr_zexp = fracerr->OneSigmaErr(kXSecTwkDial_ZExpCCQE, sign_twk);
        fZExpCurr[i] = fZExpDef[i] * (1. + fZExpTwkDial[i] * fracerr_zexp);
-       //LOG("ReW",pWARN) << i << ": twkdial: " << fZExpTwkDial[i] <<
-       //  ", fracerr: " << fracerr_zexp << ", value: " << fZExpCurr[i];
      }
   }
   else {
@@ -245,9 +247,8 @@ void GReWeightNuXSecCCQE::Reconfigure(void)
     ostringstream alg_key;
     for (int i=0;i<fZExpMaxCoef;i++)
     {
-      alg_key.str("");
+      alg_key.str(""); // algorithm key for each coefficient
       alg_key << fZExpPath << "QEL-Z_A" << i+1;
-      //LOG("ReW",pWARN) << alg_key.str()<<": "<<fZExpCurr[i];
       r.Set(alg_key.str(), fZExpCurr[i]);
     }
   }
@@ -464,13 +465,13 @@ double GReWeightNuXSecCCQE::CalcWeightMaShape(const genie::EventRecord & event)
 //_______________________________________________________________________________________
 double GReWeightNuXSecCCQE::CalcWeightZExp(const genie::EventRecord & event) 
 {
-  // very similar to CalcWeightMa...
+  // very similar to CalcWeightMa
   bool tweaked = false;
   for (int i=0;i<fZExpMaxCoef;i++)
   {
     tweaked = tweaked || (TMath::Abs(fZExpTwkDial[i]) > controls::kASmallNum);
   }
-  if(!tweaked) return 1.0;
+  if(!tweaked) { return 1.0; }
 
   Interaction * interaction = event.Summary();
 
@@ -482,10 +483,10 @@ double GReWeightNuXSecCCQE::CalcWeightZExp(const genie::EventRecord & event)
   double new_xsec   = fXSecModel->XSec(interaction, kPSQ2fE);
   double new_weight = old_weight * (new_xsec/old_xsec);
 
-//LOG("ReW", pDEBUG) << "differential cross section (old) = " << old_xsec;
-//LOG("ReW", pDEBUG) << "differential cross section (new) = " << new_xsec;
-//LOG("ReW", pDEBUG) << "event generation weight = " << old_weight;
-//LOG("ReW", pDEBUG) << "new weight = " << new_weight;
+  //LOG("ReW", pDEBUG) << "differential cross section (old) = " << old_xsec;
+  //LOG("ReW", pDEBUG) << "differential cross section (new) = " << new_xsec;
+  //LOG("ReW", pDEBUG) << "event generation weight = " << old_weight;
+  //LOG("ReW", pDEBUG) << "new weight = " << new_weight;
 
   interaction->KinePtr()->ClearRunningValues();
   interaction->ResetBit(kIAssumeFreeNucleon);

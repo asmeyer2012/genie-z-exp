@@ -1,22 +1,35 @@
 //____________________________________________________________________________
 /*!
 
-\program gtestRewght
+\program gRwghtZExpAxFF
 
-\brief   A simple program to illustrate how to use the GENIE event reweighting.
+\brief   A simple program to illustrate how to use the GENIE event reweighting
+         for use with the z-expansion axial form factor
 
-\syntax  gtestRewght -f filename [-n nev]
+\syntax  grwghtzexpaxff -f filename -t NTwk1,NTwk2,... [-n nev] [-o fileOutName]
+         [-s SigmaLo1,SigmaHi1,SigmaLo2,SigmaHi2,...]
 
          where 
          [] is an optional argument
          -f specifies a GENIE event file (GHEP format)
          -o specifies a GENIE output filename
          -n specifies the number of events to process (default: all)
+         -t specify number of tweaks on each z-expansion coefficient
+            values are comma separated (# < 2 are ignored)
+         -s specify +- one-sigma bounds on all coefficients up to max
+            values are comma separated, given as percentages
+            requires 2x number of fields from -t option
+            default value is 10% on all coefficients
 
-\author  Costas Andreopoulos <costas.andreopoulos \at stfc.ac.uk>
+\author  Aaron Meyer <asmeyer2012 \at uchicago.edu>
+         University of Chicago, Fermilab
+
+         based on gtestRewght by
+
+         Costas Andreopoulos <costas.andreopoulos \at stfc.ac.uk>
          STFC, Rutherford Appleton Laboratory
 
-\created May 19, 2010
+\created Dec 26, 2014
 
 \cpright Copyright (c) 2003-2013, GENIE Neutrino MC Generator Collaboration
          For the full text of the license visit http://copyright.genie-mc.org
@@ -33,6 +46,7 @@
 #include <TTree.h>
 #include <TArrayF.h>
 
+#include "Conventions/Controls.h"
 #include "EVGCore/EventRecord.h"
 #include "Ntuple/NtpMCFormat.h"
 #include "Ntuple/NtpMCTreeHeader.h"
@@ -57,7 +71,7 @@
 #include "Utils/CmdLnArgParser.h"
 #include "Utils/StringUtils.h"
 
-// number of coefficient values to allow variation of
+// number of coefficient values to vary
 #define MAX_COEF 3
 
 using namespace genie;
@@ -65,19 +79,20 @@ using namespace genie::rew;
 using std::string;
 using std::ostringstream;
 
+void PrintSyntax();
 void GetCommandLineArgs (int argc, char ** argv);
-int  GetNumberOfWeights (float* coefmin, float* coefmax, float* coefinc, int kmaxinc);
-bool IncrementCoefficients(float* coefmin, float* coefmax, float* coefinc,
-                           int kmaxinc, float* twkvals,
+int  GetNumberOfWeights (int* ntwk, int kmaxinc);
+bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
                            GSystSet& syst, GReWeightNuXSecCCQE* rwccqe);
 
 string gOptInpFilename;
 string gOptOutFilename;
 int    gOptNEvt;
 int    gOptKmaxInc = 0;
-float  gOptCoeffMin[MAX_COEF] = {0.};
-float  gOptCoeffMax[MAX_COEF] = {0.};
-float  gOptCoeffInc[MAX_COEF] = {0.};
+bool   gOptSigmaDefined = false; // handles setting of SigMin, SigMax
+int    gOptNTweaks[MAX_COEF] = {0 };
+float  gOptSigMin [MAX_COEF] = {0.};
+float  gOptSigMax [MAX_COEF] = {0.};
 
 //___________________________________________________________________
 int main(int argc, char ** argv)
@@ -90,12 +105,12 @@ int main(int argc, char ** argv)
   TFile file(gOptInpFilename.c_str(),"READ");
   tree = dynamic_cast <TTree *>           ( file.Get("gtree")  );
   thdr = dynamic_cast <NtpMCTreeHeader *> ( file.Get("header") );
-  LOG("test", pNOTICE) << "Input tree header: " << *thdr;
+  LOG("rwghtzexpaxff", pNOTICE) << "Input tree header: " << *thdr;
   if(!tree){
     LOG("grwght1scan", pFATAL)
       << "Can't find a GHEP tree in input file: "<< file.GetName();
     gAbortingInErr = true;
-    //PrintSyntax();
+    PrintSyntax();
     exit(1);
   }
   NtpMCEventRecord * mcrec = 0;
@@ -105,11 +120,14 @@ int main(int argc, char ** argv)
         TMath::Min(gOptNEvt, (int)tree->GetEntries()) :
         (int) tree->GetEntries();
 
-  LOG("test", pNOTICE) << "Will process " << nev << " events";
+  LOG("rwghtzexpaxff", pNOTICE) << "Will process " << nev << " events";
 
   //
   // Create a GReWeight object and add to it a set of 
   // weight calculators
+  //
+  // If seg-faulting here, need to change
+  // AxialFormFactorModel in UserPhysicsOptions.xml and LwlynSmithFFCC.xml
   //
 
   GReWeight rw;
@@ -128,62 +146,70 @@ int main(int argc, char ** argv)
   //
 
   GSystSet & syst = rw.Systematics();
+
+
+  // Create a concrete weight calculator to fine-tune
   GReWeightNuXSecCCQE * rwccqe = 
     dynamic_cast<GReWeightNuXSecCCQE *> (rw.WghtCalc("xsec_ccqe"));
   rwccqe->SetMode(GReWeightNuXSecCCQE::kModeZExp);
 
-  //
-  // Concrete weight calculators can be retrieved and fine-tuned.
-  // For example:
-
-  //GReWeightNuXSecCCQE * rwccqe = 
-  //  dynamic_cast<GReWeightNuXSecCCQE *> (rw.WghtCalc("xsec_ccqe"));
+  // further optional fine-tuning
   //rwccqe -> RewNue    (false); 
   //rwccqe -> RewNuebar (false); 
   //rwccqe -> RewNumubar(false); 
 
+
   // Declare the weights and twkvals arrays 
   const int n_events = (const int) nev;
   const int n_params = (const int) gOptKmaxInc;
-  const int n_points = GetNumberOfWeights(gOptCoeffMin,gOptCoeffMax,gOptCoeffInc,gOptKmaxInc);
+  const int n_points = (const int) GetNumberOfWeights(gOptNTweaks,gOptKmaxInc);
+  // if segfaulting here, may need to increase MAX_COEF
   float weights  [n_events][n_points];
   float twkvals  [n_points][n_params];
+
   // Initialize
-  for (int i = 0; i < n_points; i++)
+  for (int ipt = 0; ipt < n_points; ipt++)
   {
-    for (int j = 0; j < n_events; j++) weights[j][i] = 1.;
-    for (int j = 0; j < n_params; j++) twkvals[i][j] = gOptCoeffMin[j];
+    for (int iev = 0; iev < n_events; iev++) weights[iev][ipt] = 1.;
+    for (int ipr = 0; ipr < n_params; ipr++) twkvals[ipt][ipr] = (gOptNTweaks[ipr] > 1 ? -1 : 1);
   }
   // set first values for weighting
-  for (int j = 0; j < n_params; j++)
+  for (int ipr = 0; ipr < n_params; ipr++)
   {
-    rwccqe->SetCurrZExpIdx(j);
-    rwccqe->SetSystematic(kXSecTwkDial_ZExpCCQE,gOptCoeffMin[j]);
-    //syst.Set(kXSecTwkDial_ZExpCCQE,gOptCoeffMin[j]);
+    rwccqe->SetCurrZExpIdx(ipr);
+    if (gOptSigmaDefined) rwccqe->SetCurrZExpSig(gOptSigMin[ipr],gOptSigMax[ipr]);
+    rwccqe->SetSystematic(kXSecTwkDial_ZExpCCQE,twkvals[0][ipr]);
+    //syst.Set(kXSecTwkDial_ZExpCCQE,twkvals[0][ipr]);
   }
 
-  int twk_prm_idx = -1;
   // point loop
-  for (int j = 0; j < n_points; j++) {
-    twk_prm_idx++;
+  for (int ipt = 0; ipt < n_points; ipt++) {
     rw.Reconfigure();
     // Event loop
-    for(int i = 0; i < nev; i++) {
-      tree->GetEntry(i);
+    for(int iev = 0; iev < nev; iev++) {
+      tree->GetEntry(iev);
   
       EventRecord & event = *(mcrec->event);
-      LOG("test", pNOTICE) << event;
+      LOG("rwghtzexpaxff", pNOTICE) << event;
   
       double wght = rw.CalcWeight(event);
-      LOG("test", pNOTICE) << "Overall weight = " << wght;
+
+      LOG("rwghtzexpaxff", pNOTICE) << "Overall weight = " << wght;
 
       // add to arrays
-      weights[i][twk_prm_idx] = wght;
+      weights[iev][ipt] = wght;
   
       mcrec->Clear();
     } // events
-    IncrementCoefficients(gOptCoeffMin,gOptCoeffMax,gOptCoeffInc,
-                          gOptKmaxInc,twkvals[twk_prm_idx],syst,rwccqe);
+
+    // set the next set of coefficients to match the previous, then increment
+    if (ipt < n_points-1) {
+      for (int ipr=0;ipr<n_params;ipr++)
+      {
+        twkvals[ipt+1][ipr] = twkvals[ipt][ipr];
+      }
+      IncrementCoefficients(gOptNTweaks,gOptKmaxInc,twkvals[ipt+1],syst,rwccqe);
+    }
   }   // points
 
   // Close event file
@@ -193,46 +219,51 @@ int main(int argc, char ** argv)
   // Save weights 
   //
 
-  // Make an output tree for saving the weights. As only considering 
-  // varying a single systematic use this for name of tree.
+  // Make an output tree for saving the weights.
   TFile * wght_file = new TFile(gOptOutFilename.c_str(), "RECREATE");
   TTree * wght_tree = new TTree(GSyst::AsString(kXSecTwkDial_ZExpCCQE).c_str(),
                                 "GENIE weights tree");
+  // objects to pass elements into tree
   int branch_eventnum = 0;
   TArrayF *  branch_weight_array   = new TArrayF(n_points);
   TArrayF ** branch_twkdials_array = new TArrayF* [n_params];
 
   wght_tree->Branch("eventnum", &branch_eventnum);
   wght_tree->Branch("weights",  &branch_weight_array);
+
+  // create and add branches for each z-expansion coefficient
   ostringstream twk_dial_brnch_name;
-  for (int i = 0; i < n_params; i++) {
+  for (int ipr = 0; ipr < n_params; ipr++) {
     twk_dial_brnch_name.str("");
-    twk_dial_brnch_name << "twk_dial_param_" << i+1;
-    branch_twkdials_array[i] = new TArrayF(n_points);
-    wght_tree->Branch(twk_dial_brnch_name.str().c_str(), branch_twkdials_array[i]);
+    twk_dial_brnch_name << "twk_dial_param_" << ipr+1;
+    branch_twkdials_array[ipr] = new TArrayF(n_points);
+    wght_tree->Branch(twk_dial_brnch_name.str().c_str(), branch_twkdials_array[ipr]);
   }
 
   // Compatibility with Rwght1Scan
   int nfirst=0;
   int nlast=nev;
   ostringstream str_wght;
-  for(int iev = nfirst; iev <= nlast; iev++) {
-    //int idx = iev - nfirst;
-    int idx = iev;
+  for(int iev = nfirst; iev < nlast; iev++) {
     branch_eventnum = iev;
-    for(int ith_comb = 0; ith_comb < n_points; ith_comb++){
-       str_wght.str(", tweaked parameter values");
-       for (int i = 0; i < n_params; i++) {
-          if (i > 0) str_wght << ", ";
-          str_wght << i+1 << " -> " << twkvals[ith_comb][i];
+
+    for(int ipt = 0; ipt < n_points; ipt++){
+
+       // printout
+       str_wght.str("");
+       str_wght << ", tweaked parameter values : ";
+       for (int ipr = 0; ipr < n_params; ipr++) {
+          if (ipr > 0) str_wght << ", ";
+          str_wght << ipr+1 << " -> " << twkvals[ipt][ipr];
        }
-       LOG("grwght1scan", pDEBUG)
-          << "Filling tree with wght = " << weights[idx][ith_comb]
-          << str_wght.str();
-       branch_weight_array   -> AddAt (weights [idx][ith_comb], ith_comb);
-       for (int i = 0; i < n_params; i++) {
-         branch_twkdials_array[i] -> AddAt (twkvals[ith_comb][i], ith_comb);
-       }
+       LOG("grwght1scan", pNOTICE)
+          << "Filling tree with wght = " << weights[iev][ipt] << str_wght.str();
+
+       // fill tree
+       branch_weight_array   -> AddAt (weights [iev][ipt], ipt);
+       for (int ipr = 0; ipr < n_params; ipr++)
+         { branch_twkdials_array[ipr] -> AddAt (twkvals[ipt][ipr], ipt); }
+
     } // twk_dial loop
     wght_tree->Fill();
   }
@@ -243,101 +274,116 @@ int main(int argc, char ** argv)
   wght_tree = 0;
   wght_file->Close();
 
-  LOG("test", pNOTICE)  << "Done!";
+  LOG("rwghtzexpaxff", pNOTICE)  << "Done!";
   return 0;
 }
 //___________________________________________________________________
 void GetCommandLineArgs(int argc, char ** argv)
 {
-  LOG("test", pINFO) << "*** Parsing command line arguments";
+  LOG("rwghtzexpaxff", pINFO) << "*** Parsing command line arguments";
 
   CmdLnArgParser parser(argc,argv);
 
   // get GENIE event sample
   if( parser.OptionExists('f') ) {  
-    LOG("testRwghtAxFF", pINFO) << "Reading event sample filename";
+    LOG("rwghtzexpaxff", pINFO) << "Reading event sample filename";
     gOptInpFilename = parser.ArgAsString('f');
   } else {
-    LOG("testRwghtAxFF", pFATAL) 
+    LOG("rwghtzexpaxff", pFATAL) 
       << "Unspecified input filename - Exiting";
+    PrintSyntax();
     exit(1);
   }
 
   // output weight file
   if(parser.OptionExists('o')) {
-    LOG("testRwghtAxFF", pINFO) << "Reading requested output filename";
+    LOG("rwghtzexpaxff", pINFO) << "Reading requested output filename";
     gOptOutFilename = parser.ArgAsString('o');
   } else {
-    LOG("testRwghtAxFF", pINFO) << "Setting default output filename";
+    LOG("rwghtzexpaxff", pINFO) << "Setting default output filename";
     //ostringstream nm;
     //nm << "weights_" << GSyst::AsString(gOptSyst) << ".root";
     //gOptOutFilename = nm.str();
-    gOptOutFilename = "test_rw_axff_zexp.root";
+    gOptOutFilename = "test_rw_zexp_axff.root";
   }
 
   // number of events:
   if( parser.OptionExists('n') ) {  
-    LOG("testRwghtAxFF", pINFO) << "Reading number of events to analyze";
+    LOG("rwghtzexpaxff", pINFO) << "Reading number of events to analyze";
     gOptNEvt = parser.ArgAsInt('n');
   } else {
-    LOG("testRwghtAxFF", pINFO)
+    LOG("rwghtzexpaxff", pINFO)
        << "Unspecified number of events to analyze - Use all";
     gOptNEvt = -1;
   }
 
-  //if( parser.OptionExists('t') ) {
-  //  LOG("testRwghtAxFF", pINFO) << "Reading Number of Tweaks";
-  //  string coef = parser.ArgAsString('t');
-
-  //}
-
-  // coefficient ranges:
-  if( parser.OptionExists('c') ) {
-    LOG("testRwghtAxFF", pINFO) << "Reading Coefficient Ranges";
-    string coef = parser.ArgAsString('c');
+  // number of tweaks:
+  if( parser.OptionExists('t') ) {
+    LOG("rwghtzexpaxff", pINFO) << "Reading number of tweaks";
+    string coef = parser.ArgAsString('t');
     
     // split into sections of min,max,inc(rement)
     vector<string> coefrange = utils::str::Split(coef, ",");
-    assert(coefrange.size() % 3 == 0);
-    gOptKmaxInc = coefrange.size() / 3;
-    LOG("testRwghtAxFF", pINFO) << "Number of ranges to implement : " << gOptKmaxInc;
+    gOptKmaxInc = coefrange.size();
+    LOG("rwghtzexpaxff", pINFO) << "Largest coefficient to tweak : " << gOptKmaxInc;
     for (int ik = 0;ik<gOptKmaxInc;ik++)
     {
-      gOptCoeffMin[ik] = atof(coefrange[ik*3  ].c_str());
-      gOptCoeffMax[ik] = atof(coefrange[ik*3+1].c_str());
-      gOptCoeffInc[ik] = atof(coefrange[ik*3+2].c_str());
+      gOptNTweaks[ik] = atof(coefrange[ik].c_str());
     }
     for (int ik = 0;ik<gOptKmaxInc;ik++)
     {
-      LOG("testRwghtAxFF",pWARN)<<ik+1<<": "<< gOptCoeffMin[ik]
-        <<","<< gOptCoeffMax[ik]<<","<< gOptCoeffInc[ik];
+      LOG("rwghtzexpaxff",pINFO)<<"Number of tweaks on coefficient "<<ik+1<<" : "<< gOptNTweaks[ik];
     }
   } else {
-    LOG("testRwghtAxFF", pFATAL) 
-      << "Unspecified weighting for parameters - Exiting";
+    LOG("rwghtzexpaxff", pFATAL) 
+      << "Unspecified tweaks for parameters - Exiting";
+    PrintSyntax();
     exit(1);
+  }
+
+  // lower/upper sigma:
+  if( parser.OptionExists('s') ) {
+    LOG("rwghtzexpaxff", pINFO) << "Reading specified parameter uncertainties";
+    string coef = parser.ArgAsString('s');
+    
+    // split into sections of min,max
+    vector<string> sigrange = utils::str::Split(coef, ",");
+    // gOptKmaxInc defined by number of tweaks (-t)
+    assert(sigrange.size() == (unsigned int) 2*gOptKmaxInc);
+    gOptSigmaDefined = true;
+    for (int ik = 0;ik<gOptKmaxInc;ik++)
+    {
+      gOptSigMin[ik] = atof(sigrange[ik*2  ].c_str());
+      gOptSigMax[ik] = atof(sigrange[ik*2+1].c_str());
+    }
+    for (int ik = 0;ik<gOptKmaxInc;ik++)
+    {
+      LOG("rwghtzexpaxff",pINFO)<<ik+1<<": "<< gOptSigMin[ik] <<","<< gOptSigMax[ik];
+    }
   }
 
 }
 //_________________________________________________________________________________
-bool IncrementCoefficients(float* coefmin, float* coefmax, float* coefinc,
-                           int kmaxinc, float* twkvals,
+bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
                            GSystSet& syst, GReWeightNuXSecCCQE* rwccqe) 
 {
   if (kmaxinc < 1)
   {
-    LOG("gtestRwghtAxFF",pERROR) << "No coefficients to increment";
+    LOG("grwghtzexpaxff",pERROR) << "No coefficients to increment";
     return false;
   } else {
 
   int ip = -1;
-  bool stopflag;
+  bool stopflag = false;
   do
   {
     if (ip > -1)
-    { // a previous iteration went over max
-      twkvals[ip] = coefmin[ip];
-      syst.Set(kXSecTwkDial_ZExpCCQE, twkvals[ip]);
+    { // fully incremented a coefficient; reset it and continue to the next
+      if (ntwk[ip] > 1) { twkvals[ip] = -1.; }
+      else              { twkvals[ip] =  1.; }
+
+      // set the value manually
+      rwccqe->SetSystematic(kXSecTwkDial_ZExpCCQE, twkvals[ip]);
     }
     stopflag = true;
 
@@ -345,27 +391,40 @@ bool IncrementCoefficients(float* coefmin, float* coefmax, float* coefinc,
     rwccqe->SetCurrZExpIdx(ip);
     if (ip == kmaxinc) return false;  // done with incrementing
 
-    twkvals[ip] += coefinc[ip];
+    if (ntwk[ip] > 1) { twkvals[ip] += 2./float(ntwk[ip]-1); }
+    else              { continue; }
+
+    // actual updating of this will be handled by GReWeight::Reconfigure
     syst.Set(kXSecTwkDial_ZExpCCQE, twkvals[ip]);
-    if (twkvals[ip] > coefmax[ip]) stopflag=false; // went over
+    if (twkvals[ip] > 1. + controls::kASmallNum) stopflag=false; // went over
 
   } while (! stopflag); // loop
 
   return true;
-  } // if kmaxinc < 1
+  } // if kmaxinc >= 1
 
   return false;
 }
 //_________________________________________________________________________________
-int GetNumberOfWeights(float* coefmin, float* coefmax, float* coefinc, int kmaxinc)
+int GetNumberOfWeights(int* ntwk, int kmaxinc)
 {
-  float range = 0.;
   int  num_pts = 1;
   for (int i=0;i<kmaxinc;i++)
   {
-    range = coefmax[i]-coefmin[i];
-    num_pts *= (int) (range > 0 ? range/coefinc[i] : 1);
+    if (ntwk[i] > 1) num_pts *= ntwk[i];
   }
   return num_pts;
+}
+//_________________________________________________________________________________
+void PrintSyntax(void)
+{
+  LOG("grwghtzexpaxff", pFATAL)
+     << "\n\n"
+     << "grwght1scan                  \n"
+     << "     -f input_event_file     \n"
+     << "     -t ntwk1[,ntwk2[,...]]  \n"
+     << "    [-n nev]                 \n"
+     << "    [-s sigLo1,sigHi1[,...]] \n"
+     << "    [-o output_weights_file]";
 }
 //_________________________________________________________________________________

@@ -69,6 +69,7 @@ namespace rew   {
    void RewNumubar  (bool tf ) { fRewNumubar = tf;   }
    void SetMaPath   (string p) { fMaPath     = p;    }
 
+   // z-expansion specific options
    void ResetZExpSigma (void);
    void SetCurrZExpIdx (int idx); // { fZExpCurrIdx = idx; }
    void SetCurrZExpSig (double siglo, double sighi)
@@ -86,11 +87,11 @@ namespace rew   {
    double CalcWeightZExp    (const EventRecord & event);
 
    XSecAlgorithmI * fXSecModelDef;    ///< default model
-   XSecAlgorithmI * fXSecModel;       ///< tweaked dipole model
+   XSecAlgorithmI * fXSecModel;       ///< tweaked model
    Registry *       fXSecModelConfig; ///< config in tweaked model
    string fFFModel;
 
-   int    fMode;         ///< 0: Ma, 1: Norm and MaShape
+   int    fMode;         ///< 0: Ma, 1: Norm and MaShape, 2: Z-Expansion
    bool   fRewNue;       ///< reweight nu_e CC?
    bool   fRewNuebar;    ///< reweight nu_e_bar CC?
    bool   fRewNumu;      ///< reweight nu_mu CC?
@@ -103,14 +104,14 @@ namespace rew   {
    double fMaDef;        ///<
    double fMaCurr;       ///<
 
-   int     fZExpCurrIdx;
-   int     fZExpMaxCoef;
-   string  fZExpPath;
-   double* fZExpTwkDial;  
-   double* fZExpDef;  
-   double* fZExpCurr;  
-   double* fZExpSigmaLo;
-   double* fZExpSigmaHi;
+   int     fZExpCurrIdx; ///< current coefficient index
+   int     fZExpMaxCoef; ///< max number of coefficients
+   string  fZExpPath;    ///< algorithm path to get coefficients
+   double* fZExpTwkDial; ///< 
+   double* fZExpDef;     ///<
+   double* fZExpCurr;    ///< array of current parameter values
+   double* fZExpSigmaLo; ///< array of uncertainties on each coefficient (default 10%)
+   double* fZExpSigmaHi; ///<
 
    TFile *    fTestFile;
    TNtupleD * fTestNtp;
