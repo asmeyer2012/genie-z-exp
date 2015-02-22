@@ -181,7 +181,7 @@ int main(int argc, char ** argv)
   for (int ipt = 0; ipt < n_points; ipt++)
   {
     for (int iev = 0; iev < nev; iev++)      weights[iev][ipt] = 1.;
-    for (int ipr = 0; ipr < n_params; ipr++) twkvals[ipt][ipr] = (gOptNTweaks[ipr] > 1 ? -1 : 1);
+    for (int ipr = 0; ipr < n_params; ipr++) twkvals[ipt][ipr] = (gOptNTweaks[ipr] > 1 ? -1 : 0);
   }
   // set first values for weighting
   for (int ipr = 0; ipr < n_params; ipr++)
@@ -189,8 +189,8 @@ int main(int argc, char ** argv)
     rwccqe->SetCurrZExpIdx(ipr);
     if (gOptSigmaDefined) rwccqe->SetCurrZExpSig(gOptSigMin[ipr],gOptSigMax[ipr]);
     rwccqe->SetSystematic(kXSecTwkDial_ZExpCCQE,twkvals[0][ipr]);
-    std::cout << "Setting current z expansion tweak for param " <<ipr<<" : " << twkvals[0][ipr] << std::endl;
-    //syst.Set(kXSecTwkDial_ZExpCCQE,twkvals[0][ipr]);
+    //std::cout << "Setting current z expansion tweak for param " 
+    //  <<ipr<<" : " << twkvals[0][ipr] << std::endl;
   }
 
   // point loop
