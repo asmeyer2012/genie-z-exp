@@ -80,6 +80,7 @@ using std::string;
 using std::ostringstream;
 
 void PrintSyntax();
+void GetEventRange      (Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nlast);
 void GetCommandLineArgs (int argc, char ** argv);
 int  GetNumberOfWeights (int* ntwk, int kmaxinc);
 bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
@@ -87,7 +88,9 @@ bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
 
 string gOptInpFilename;
 string gOptOutFilename;
-int    gOptNEvt;
+//int    gOptNEvt;
+Long64_t gOptNEvt1;
+Long64_t gOptNEvt2;
 int    gOptKmaxInc = 0;
 bool   gOptSigmaDefined = false; // handles setting of SigMin, SigMax
 int    gOptNTweaks[MAX_COEF] = {0 };
@@ -107,7 +110,7 @@ int main(int argc, char ** argv)
   thdr = dynamic_cast <NtpMCTreeHeader *> ( file.Get("header") );
   LOG("rwghtzexpaxff", pNOTICE) << "Input tree header: " << *thdr;
   if(!tree){
-    LOG("grwght1scan", pFATAL)
+    LOG("grwghtzexpaxff", pFATAL)
       << "Can't find a GHEP tree in input file: "<< file.GetName();
     gAbortingInErr = true;
     PrintSyntax();
@@ -116,9 +119,14 @@ int main(int argc, char ** argv)
   NtpMCEventRecord * mcrec = 0;
   tree->SetBranchAddress("gmcrec", &mcrec);
 
-  int nev = (gOptNEvt > 0) ?
-        TMath::Min(gOptNEvt, (int)tree->GetEntries()) :
-        (int) tree->GetEntries();
+  Long64_t nev_in_file = tree->GetEntries();
+  Long64_t nfirst = 0;
+  Long64_t nlast  = 0;
+  GetEventRange(nev_in_file, nfirst, nlast);
+  //int nev = (gOptNEvt > 0) ?
+  //      TMath::Min(gOptNEvt, (int)tree->GetEntries()) :
+  //      (int) tree->GetEntries();
+  int nev = int(nlast - nfirst + 1);
 
   LOG("rwghtzexpaxff", pNOTICE) << "Will process " << nev << " events";
 
@@ -164,13 +172,15 @@ int main(int argc, char ** argv)
   const int n_params = (const int) gOptKmaxInc;
   const int n_points = (const int) GetNumberOfWeights(gOptNTweaks,gOptKmaxInc);
   // if segfaulting here, may need to increase MAX_COEF
+  // copied from gtestRwght... seems inefficient
+  // -- couldn't we just load straight to the tree? doing so would prevent segfaults
   float weights  [n_events][n_points];
   float twkvals  [n_points][n_params];
 
   // Initialize
   for (int ipt = 0; ipt < n_points; ipt++)
   {
-    for (int iev = 0; iev < n_events; iev++) weights[iev][ipt] = 1.;
+    for (int iev = 0; iev < nev; iev++)      weights[iev][ipt] = 1.;
     for (int ipr = 0; ipr < n_params; ipr++) twkvals[ipt][ipr] = (gOptNTweaks[ipr] > 1 ? -1 : 1);
   }
   // set first values for weighting
@@ -179,6 +189,7 @@ int main(int argc, char ** argv)
     rwccqe->SetCurrZExpIdx(ipr);
     if (gOptSigmaDefined) rwccqe->SetCurrZExpSig(gOptSigMin[ipr],gOptSigMax[ipr]);
     rwccqe->SetSystematic(kXSecTwkDial_ZExpCCQE,twkvals[0][ipr]);
+    std::cout << "Setting current z expansion tweak for param " <<ipr<<" : " << twkvals[0][ipr] << std::endl;
     //syst.Set(kXSecTwkDial_ZExpCCQE,twkvals[0][ipr]);
   }
 
@@ -186,10 +197,11 @@ int main(int argc, char ** argv)
   for (int ipt = 0; ipt < n_points; ipt++) {
     rw.Reconfigure();
     // Event loop
-    for(int iev = 0; iev < nev; iev++) {
+    for(int iev = nfirst; iev <= nlast; iev++) {
       tree->GetEntry(iev);
   
       EventRecord & event = *(mcrec->event);
+      LOG("rwghtzexpaxff", pNOTICE) << "Event number   = " << iev;
       LOG("rwghtzexpaxff", pNOTICE) << event;
   
       double wght = rw.CalcWeight(event);
@@ -197,7 +209,7 @@ int main(int argc, char ** argv)
       LOG("rwghtzexpaxff", pNOTICE) << "Overall weight = " << wght;
 
       // add to arrays
-      weights[iev][ipt] = wght;
+      weights[iev - nfirst][ipt] = wght;
   
       mcrec->Clear();
     } // events
@@ -241,10 +253,10 @@ int main(int argc, char ** argv)
   }
 
   // Compatibility with Rwght1Scan
-  int nfirst=0;
-  int nlast=nev;
+  //int nfirst=0;
+  //int nlast=nev;
   ostringstream str_wght;
-  for(int iev = nfirst; iev < nlast; iev++) {
+  for(int iev = nfirst; iev <= nlast; iev++) {
     branch_eventnum = iev;
 
     for(int ipt = 0; ipt < n_points; ipt++){
@@ -256,11 +268,11 @@ int main(int argc, char ** argv)
           if (ipr > 0) str_wght << ", ";
           str_wght << ipr+1 << " -> " << twkvals[ipt][ipr];
        }
-       LOG("grwght1scan", pNOTICE)
-          << "Filling tree with wght = " << weights[iev][ipt] << str_wght.str();
+       LOG("grwghtzexpaxff", pNOTICE)
+          << "Filling tree with wght = " << weights[iev - nfirst][ipt] << str_wght.str();
 
        // fill tree
-       branch_weight_array   -> AddAt (weights [iev][ipt], ipt);
+       branch_weight_array   -> AddAt (weights [iev - nfirst][ipt], ipt);
        for (int ipr = 0; ipr < n_params; ipr++)
          { branch_twkdials_array[ipr] -> AddAt (twkvals[ipt][ipr], ipt); }
 
@@ -307,15 +319,36 @@ void GetCommandLineArgs(int argc, char ** argv)
     gOptOutFilename = "test_rw_zexp_axff.root";
   }
 
-  // number of events:
-  if( parser.OptionExists('n') ) {  
-    LOG("rwghtzexpaxff", pINFO) << "Reading number of events to analyze";
-    gOptNEvt = parser.ArgAsInt('n');
+  if ( parser.OptionExists('n') ) {
+    //
+    LOG("grwghtzexpaxff", pINFO) << "Reading number of events to analyze";
+    string nev =  parser.ArgAsString('n');
+    if (nev.find(",") != string::npos) {
+      vector<long> vecn = parser.ArgAsLongTokens('n',",");
+      if(vecn.size()!=2) {
+         LOG("grwghtzexpaxff", pFATAL) << "Invalid syntax";
+         gAbortingInErr = true;
+         PrintSyntax();
+         exit(1);
+      }
+      // User specified a comma-separated set of values n1,n2.
+      // Use [n1,n2] as the event range to process.
+      gOptNEvt1 = vecn[0];
+      gOptNEvt2 = vecn[1];
+    } else {
+      // User specified a single number n.
+      // Use [0,n] as the event range to process.
+      gOptNEvt1 = -1;
+      gOptNEvt2 = parser.ArgAsLong('n');
+    }
   } else {
-    LOG("rwghtzexpaxff", pINFO)
-       << "Unspecified number of events to analyze - Use all";
-    gOptNEvt = -1;
+    LOG("grwghtzexpaxff", pINFO)
+      << "Unspecified number of events to analyze - Use all";
+    gOptNEvt1 = -1;
+    gOptNEvt2 = -1;
   }
+  LOG("grwghtzexpaxff", pDEBUG)
+    << "Input event range: " << gOptNEvt1 << ", " << gOptNEvt2;
 
   // number of tweaks:
   if( parser.OptionExists('t') ) {
@@ -364,6 +397,36 @@ void GetCommandLineArgs(int argc, char ** argv)
 
 }
 //_________________________________________________________________________________
+void GetEventRange(Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nlast)
+{
+  nfirst = 0;
+  nlast  = 0;
+
+  if(gOptNEvt1>=0 && gOptNEvt2>=0) {
+    // Input was `-n N1,N2'.
+    // Process events [N1,N2].
+    // Note: Incuding N1 and N2.
+    nfirst = gOptNEvt1;
+    nlast  = TMath::Min(nev_in_file-1, gOptNEvt2);
+  }
+  else
+  if(gOptNEvt1<0 && gOptNEvt2>=0) {
+    // Input was `-n N'.
+    // Process first N events [0,N). 
+    // Note: Event N is not included.
+    nfirst = 0;
+    nlast  = TMath::Min(nev_in_file-1, gOptNEvt2-1);
+  }
+  else
+  if(gOptNEvt1<0 && gOptNEvt2<0) {
+    // No input. Process all events.
+    nfirst = 0;
+    nlast  = nev_in_file-1;
+  }
+
+  assert(nfirst < nlast && nfirst >= 0 && nlast <= nev_in_file-1);
+}
+//_________________________________________________________________________________
 bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
                            GSystSet& syst, GReWeightNuXSecCCQE* rwccqe) 
 {
@@ -384,6 +447,7 @@ bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
 
       // set the value manually
       rwccqe->SetSystematic(kXSecTwkDial_ZExpCCQE, twkvals[ip]);
+      std::cout << "Setting current z expansion tweak for param " <<ip<<" : " << twkvals[ip] << std::endl;
     }
     stopflag = true;
 
@@ -396,6 +460,7 @@ bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
 
     // actual updating of this will be handled by GReWeight::Reconfigure
     syst.Set(kXSecTwkDial_ZExpCCQE, twkvals[ip]);
+    std::cout << "Setting current z expansion tweak for param " <<ip<<" : " << twkvals[ip] << std::endl;
     if (twkvals[ip] > 1. + controls::kASmallNum) stopflag=false; // went over
 
   } while (! stopflag); // loop
@@ -420,7 +485,7 @@ void PrintSyntax(void)
 {
   LOG("grwghtzexpaxff", pFATAL)
      << "\n\n"
-     << "grwght1scan                  \n"
+     << "grwghtzexpaxff               \n"
      << "     -f input_event_file     \n"
      << "     -t ntwk1[,ntwk2[,...]]  \n"
      << "    [-n nev]                 \n"
