@@ -68,6 +68,7 @@
 #include "ReWeight/GReWeightFZone.h"
 #include "ReWeight/GReWeightINuke.h"
 #include "ReWeight/GReWeightAGKY.h"
+#include "ReWeight/GSystUncertainty.h"
 #include "Utils/CmdLnArgParser.h"
 #include "Utils/StringUtils.h"
 
@@ -85,6 +86,7 @@ void GetCommandLineArgs (int argc, char ** argv);
 int  GetNumberOfWeights (int* ntwk, int kmaxinc);
 bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
                            GSystSet& syst, GReWeightNuXSecCCQE* rwccqe);
+GSyst_t GetZExpSystematic(int ip);
 
 string gOptInpFilename;
 string gOptOutFilename;
@@ -155,11 +157,12 @@ int main(int argc, char ** argv)
 
   GSystSet & syst = rw.Systematics();
 
-
   // Create a concrete weight calculator to fine-tune
   GReWeightNuXSecCCQE * rwccqe = 
     dynamic_cast<GReWeightNuXSecCCQE *> (rw.WghtCalc("xsec_ccqe"));
   rwccqe->SetMode(GReWeightNuXSecCCQE::kModeZExp);
+  // In case uncertainties need to be altered
+  GSystUncertainty * unc = GSystUncertainty::Instance();
 
   // further optional fine-tuning
   //rwccqe -> RewNue    (false); 
@@ -183,14 +186,21 @@ int main(int argc, char ** argv)
     for (int iev = 0; iev < nev; iev++)      weights[iev][ipt] = 1.;
     for (int ipr = 0; ipr < n_params; ipr++) twkvals[ipt][ipr] = (gOptNTweaks[ipr] > 1 ? -1 : 0);
   }
+
   // set first values for weighting
+  GSyst_t gsyst;
   for (int ipr = 0; ipr < n_params; ipr++)
   {
-    rwccqe->SetCurrZExpIdx(ipr);
-    if (gOptSigmaDefined) rwccqe->SetCurrZExpSig(gOptSigMin[ipr],gOptSigMax[ipr]);
-    rwccqe->SetSystematic(kXSecTwkDial_ZExpCCQE,twkvals[0][ipr]);
-    //std::cout << "Setting current z expansion tweak for param " 
-    //  <<ipr<<" : " << twkvals[0][ipr] << std::endl;
+    gsyst = GetZExpSystematic(ipr);
+    rwccqe->SetSystematic(gsyst,twkvals[0][ipr]);
+    LOG("rwghtzexpaxff", pNOTICE) << "Setting z-expansion tweak for param " 
+      <<ipr<<" : " << twkvals[0][ipr];
+    if (gOptSigmaDefined)
+    {
+      unc->SetUncertainty(gsyst,gOptSigMin[ipr],gOptSigMax[ipr]);
+      LOG("rwghtzexpaxff", pNOTICE) << "Setting z-expansion sigma for param " 
+        <<ipr<<" : " << gOptSigMin[ipr] <<","<< gOptSigMax[ipr];
+    }
   }
 
   // point loop
@@ -233,8 +243,7 @@ int main(int argc, char ** argv)
 
   // Make an output tree for saving the weights.
   TFile * wght_file = new TFile(gOptOutFilename.c_str(), "RECREATE");
-  TTree * wght_tree = new TTree(GSyst::AsString(kXSecTwkDial_ZExpCCQE).c_str(),
-                                "GENIE weights tree");
+  TTree * wght_tree = new TTree("ZExpCCQE","GENIE weights tree");
   // objects to pass elements into tree
   int branch_eventnum = 0;
   TArrayF *  branch_weight_array   = new TArrayF(n_points);
@@ -252,9 +261,6 @@ int main(int argc, char ** argv)
     wght_tree->Branch(twk_dial_brnch_name.str().c_str(), branch_twkdials_array[ipr]);
   }
 
-  // Compatibility with Rwght1Scan
-  //int nfirst=0;
-  //int nlast=nev;
   ostringstream str_wght;
   for(int iev = nfirst; iev <= nlast; iev++) {
     branch_eventnum = iev;
@@ -424,7 +430,7 @@ void GetEventRange(Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nlast)
     nlast  = nev_in_file-1;
   }
 
-  assert(nfirst < nlast && nfirst >= 0 && nlast <= nev_in_file-1);
+  assert(nfirst <= nlast && nfirst >= 0 && nlast <= nev_in_file-1);
 }
 //_________________________________________________________________________________
 bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
@@ -438,30 +444,33 @@ bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
 
   int ip = -1;
   bool stopflag = false;
+  GSyst_t gsyst;
   do
   {
     if (ip > -1)
     { // fully incremented a coefficient; reset it and continue to the next
       if (ntwk[ip] > 1) { twkvals[ip] = -1.; }
-      else              { twkvals[ip] =  1.; }
+      else              { twkvals[ip] =  0.; }
 
       // set the value manually
-      rwccqe->SetSystematic(kXSecTwkDial_ZExpCCQE, twkvals[ip]);
-      std::cout << "Setting current z expansion tweak for param " <<ip<<" : " << twkvals[ip] << std::endl;
+      rwccqe->SetSystematic(gsyst, twkvals[ip]);
+      LOG("rwghtzexpaxff", pNOTICE) << "Setting z-expansion tweak for param " 
+        <<ip<<" : " << twkvals[ip];
     }
     stopflag = true;
 
     ip++;                             // increment index
-    rwccqe->SetCurrZExpIdx(ip);
     if (ip == kmaxinc) return false;  // done with incrementing
+    gsyst = GetZExpSystematic(ip);
 
     if (ntwk[ip] > 1) { twkvals[ip] += 2./float(ntwk[ip]-1); }
-    else              { continue; }
+    else              { stopflag = false; continue; }
 
     // actual updating of this will be handled by GReWeight::Reconfigure
-    syst.Set(kXSecTwkDial_ZExpCCQE, twkvals[ip]);
-    std::cout << "Setting current z expansion tweak for param " <<ip<<" : " << twkvals[ip] << std::endl;
-    if (twkvals[ip] > 1. + controls::kASmallNum) stopflag=false; // went over
+    syst.Set(gsyst, twkvals[ip]);
+    LOG("rwghtzexpaxff", pNOTICE) << "Setting z-expansion tweak for param " 
+      <<ip<<" : " << twkvals[ip];
+    if (twkvals[ip] > 1. + controls::kASmallNum) { stopflag=false; } // went over
 
   } while (! stopflag); // loop
 
@@ -491,5 +500,20 @@ void PrintSyntax(void)
      << "    [-n nev]                 \n"
      << "    [-s sigLo1,sigHi1[,...]] \n"
      << "    [-o output_weights_file]";
+}
+//_________________________________________________________________________________
+GSyst_t GetZExpSystematic(int ip)
+{
+    switch(ip){
+      case 0: return kXSecTwkDial_ZExpA1CCQE; break;
+      case 1: return kXSecTwkDial_ZExpA2CCQE; break;
+      case 2: return kXSecTwkDial_ZExpA3CCQE; break;
+      case 3: return kXSecTwkDial_ZExpA4CCQE; break;
+      default:
+        LOG("rwghtzexpaxff", pFATAL) 
+          << "Cannot find systematic corresponding to parameter " << ip;
+        exit(0);
+        break;
+    }
 }
 //_________________________________________________________________________________

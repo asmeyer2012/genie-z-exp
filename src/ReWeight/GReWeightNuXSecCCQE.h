@@ -49,6 +49,7 @@ namespace rew   {
    static const int   kModeMa             = 0;
    static const int   kModeNormAndMaShape = 1;
    static const int   kModeZExp           = 2;
+   static const int   fZExpMaxSyst        = 4; ///< maximum number of systematics
 
    GReWeightNuXSecCCQE();
   ~GReWeightNuXSecCCQE();
@@ -70,11 +71,6 @@ namespace rew   {
    void SetMaPath   (string p) { fMaPath     = p;    }
 
    // z-expansion specific options
-   void ResetZExpSigma (void);
-   void SetCurrZExpIdx (int idx); // { fZExpCurrIdx = idx; }
-   void SetCurrZExpSig (double siglo, double sighi)
-                                 { fZExpSigmaLo[fZExpCurrIdx] = siglo;
-                                   fZExpSigmaHi[fZExpCurrIdx] = sighi; }
    void SetZExpPath    (string p){ fZExpPath    = p;   }
 
  private:
@@ -105,13 +101,11 @@ namespace rew   {
    double fMaCurr;       ///<
 
    int     fZExpCurrIdx; ///< current coefficient index
-   int     fZExpMaxCoef; ///< max number of coefficients
+   int     fZExpMaxCoef; ///< max number of coefficients to use
    string  fZExpPath;    ///< algorithm path to get coefficients
-   double* fZExpTwkDial; ///< 
-   double* fZExpDef;     ///<
-   double* fZExpCurr;    ///< array of current parameter values
-   double* fZExpSigmaLo; ///< array of uncertainties on each coefficient (default 10%)
-   double* fZExpSigmaHi; ///<
+   double  fZExpTwkDial[fZExpMaxSyst]; ///< 
+   double  fZExpDef    [fZExpMaxSyst]; ///<
+   double  fZExpCurr   [fZExpMaxSyst]; ///< array of current parameter values
 
    TFile *    fTestFile;
    TNtupleD * fTestNtp;

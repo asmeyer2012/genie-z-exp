@@ -63,6 +63,7 @@ using std::ostringstream;
 const int GReWeightNuXSecCCQE::kModeMa;
 const int GReWeightNuXSecCCQE::kModeNormAndMaShape;
 const int GReWeightNuXSecCCQE::kModeZExp;
+const int GReWeightNuXSecCCQE::fZExpMaxSyst;
 
 //_______________________________________________________________________________________
 GReWeightNuXSecCCQE::GReWeightNuXSecCCQE() 
@@ -72,12 +73,6 @@ GReWeightNuXSecCCQE::GReWeightNuXSecCCQE()
 //_______________________________________________________________________________________
 GReWeightNuXSecCCQE::~GReWeightNuXSecCCQE()
 {
-  delete [] fZExpTwkDial;
-  delete [] fZExpDef;
-  delete [] fZExpCurr;
-  delete [] fZExpSigmaLo;
-  delete [] fZExpSigmaHi;
-
 #ifdef _G_REWEIGHT_CCQE_DEBUG_
   fTestFile->cd();
   fTestNtp ->Write();
@@ -112,7 +107,10 @@ bool GReWeightNuXSecCCQE::IsHandled(GSyst_t syst)
        }
        break;
 
-     case ( kXSecTwkDial_ZExpCCQE ):
+     case ( kXSecTwkDial_ZExpA1CCQE ):
+     case ( kXSecTwkDial_ZExpA2CCQE ):
+     case ( kXSecTwkDial_ZExpA3CCQE ):
+     case ( kXSecTwkDial_ZExpA4CCQE ):
        if(fMode==kModeZExp && strcmp(fFFModel.c_str(),kModelZExp) == 0)
        {
           handle = true;
@@ -146,16 +144,17 @@ void GReWeightNuXSecCCQE::SetSystematic(GSyst_t syst, double twk_dial)
     case ( kXSecTwkDial_MaCCQE ) :
       fMaTwkDial = twk_dial;
       break;
-    case ( kXSecTwkDial_ZExpCCQE ) :
-      //
-      // GReWeight::Reconfigure only fixes one value
-      // Fix others by explicitly looping over fZExpCurrIdx and
-      //  setting them with (GReWeightNuXSecCCQE object pointer)->SetSystematic
-      // 
-      if (fZExpCurrIdx > -1 && fZExpCurrIdx < fZExpMaxCoef)
-      {
-        fZExpTwkDial[fZExpCurrIdx] = twk_dial;
-      }
+    case ( kXSecTwkDial_ZExpA1CCQE ) :
+      if(fZExpMaxCoef>0){ fZExpTwkDial[0] = twk_dial; }
+      break;
+    case ( kXSecTwkDial_ZExpA2CCQE ) :
+      if(fZExpMaxCoef>1){ fZExpTwkDial[1] = twk_dial; }
+      break;
+    case ( kXSecTwkDial_ZExpA3CCQE ) :
+      if(fZExpMaxCoef>2){ fZExpTwkDial[2] = twk_dial; }
+      break;
+    case ( kXSecTwkDial_ZExpA4CCQE ) :
+      if(fZExpMaxCoef>3){ fZExpTwkDial[3] = twk_dial; }
       break;
     default:
       break;
@@ -169,8 +168,8 @@ void GReWeightNuXSecCCQE::Reset(void)
   fMaTwkDial   = 0.; 
   fMaCurr      = fMaDef;
 
-  fZExpCurrIdx = 0;
-  for (int i=0;i<fZExpMaxCoef;i++)
+  //fZExpCurrIdx = 0;
+  for (int i=0;i<fZExpMaxSyst;i++)
   {
     //sigmas for ZExp not reset
     fZExpTwkDial[i] = 0.;
@@ -180,28 +179,9 @@ void GReWeightNuXSecCCQE::Reset(void)
   this->Reconfigure();
 }
 //_______________________________________________________________________________________
-void GReWeightNuXSecCCQE::ResetZExpSigma(void)
-{
-  for (int i=0;i<fZExpMaxCoef;i++)
-  {
-    fZExpSigmaLo[i] = .1;
-    fZExpSigmaHi[i] = .1;
-  }
-  this->Reconfigure();
-}
-//_______________________________________________________________________________________
-void GReWeightNuXSecCCQE::SetCurrZExpIdx(int idx)
-{
-  fZExpCurrIdx = idx;
-  GSystUncertainty * unc = GSystUncertainty::Instance();
-  unc->SetUncertainty(kXSecTwkDial_ZExpCCQE,fZExpSigmaLo[idx],fZExpSigmaHi[idx]); 
-}
-//_______________________________________________________________________________________
 void GReWeightNuXSecCCQE::Reconfigure(void)
 {
   GSystUncertainty * fracerr = GSystUncertainty::Instance();
-  // save current index to put it back after (if necessary)
-  int curr_idx = fZExpCurrIdx; 
 
   if(fMode==kModeMa && strcmp(fFFModel.c_str(),kModelDipole) == 0) {   
      int    sign_matwk = utils::rew::Sign(fMaTwkDial);
@@ -222,13 +202,20 @@ void GReWeightNuXSecCCQE::Reconfigure(void)
   }
   else
   if(fMode==kModeZExp && strcmp(fFFModel.c_str(),kModelZExp) == 0) {
-     int    sign_twk = utils::rew::Sign(0.);
-     double fracerr_zexp = 0.;
+     int     sign_twk = utils::rew::Sign(0.);
+     double  fracerr_zexp = 0.;
+     GSyst_t syst;
      // loop over all indices and update each
      for (int i=0;i<fZExpMaxCoef;i++)
      {
-       this->SetCurrZExpIdx(i);
-       fracerr_zexp = fracerr->OneSigmaErr(kXSecTwkDial_ZExpCCQE, sign_twk);
+       switch(i){
+         case 0: syst = kXSecTwkDial_ZExpA1CCQE; break;
+         case 1: syst = kXSecTwkDial_ZExpA2CCQE; break;
+         case 2: syst = kXSecTwkDial_ZExpA3CCQE; break;
+         case 3: syst = kXSecTwkDial_ZExpA4CCQE; break;
+         default: return; break;
+       }
+       fracerr_zexp = fracerr->OneSigmaErr(syst, sign_twk);
        fZExpCurr[i] = fZExpDef[i] * (1. + fZExpTwkDial[i] * fracerr_zexp);
      }
   }
@@ -253,8 +240,6 @@ void GReWeightNuXSecCCQE::Reconfigure(void)
     }
   }
   fXSecModel->Configure(r);
-  this->SetCurrZExpIdx(curr_idx);
-
 }
 //_______________________________________________________________________________________
 double GReWeightNuXSecCCQE::CalcWeight(const genie::EventRecord & event) 
@@ -349,7 +334,9 @@ void GReWeightNuXSecCCQE::Init(void)
   {
     this->SetMode(kModeZExp);
     fMaDef = 0.;
-    fZExpMaxCoef = fXSecModelConfig->GetInt(fZExpPath + "QEL-Kmax");
+    fZExpMaxCoef =
+      TMath::Min(fXSecModelConfig->GetInt(fZExpPath + "QEL-Kmax"),
+       this->fZExpMaxSyst);
   }
 
   fNormTwkDial = 0.;
@@ -358,26 +345,17 @@ void GReWeightNuXSecCCQE::Init(void)
   fMaTwkDial   = 0.; 
   fMaCurr      = fMaDef;
 
-  fZExpCurrIdx = 0;
-  fZExpTwkDial = new double[fZExpMaxCoef];
-  fZExpDef     = new double[fZExpMaxCoef];
-  fZExpCurr    = new double[fZExpMaxCoef];
-  fZExpSigmaLo = new double[fZExpMaxCoef];
-  fZExpSigmaHi = new double[fZExpMaxCoef];
-
   ostringstream alg_key;
-  for (int i=0;i<fZExpMaxCoef;i++)
+  for (int i=0;i<fZExpMaxSyst;i++)
   {
     alg_key.str("");
     alg_key << fZExpPath << "QEL-Z_A" << i+1;
-    if (strcmp(fFFModel.c_str(),kModelZExp) == 0)
+    if (strcmp(fFFModel.c_str(),kModelZExp) == 0 && i < fZExpMaxCoef)
     { fZExpDef[i] = fXSecModelConfig->GetDouble(alg_key.str()); }
     else
     { fZExpDef[i] = 0.; }
     fZExpTwkDial[i] = 0.;
     fZExpCurr   [i] = fZExpDef[i];
-    fZExpSigmaLo[i] = .1;
-    fZExpSigmaHi[i] = .1;
   }
 
 #ifdef _G_REWEIGHT_CCQE_DEBUG_
