@@ -40,16 +40,15 @@ class Registry;
 
 namespace rew   {
 
- static const char* kModelDipole = "genie::DipoleAxialFormFactorModel";
- static const char* kModelZExp   = "genie::ZExpAxialFormFactorModel";
-
  class GReWeightNuXSecCCQE : public GReWeightI 
  {
  public:
-   static const int   kModeMa             = 0;
-   static const int   kModeNormAndMaShape = 1;
-   static const int   kModeZExp           = 2;
-   static const int   fZExpMaxSyst        = 4; ///< maximum number of systematics
+   static const int   kModeMa               = 0;
+   static const int   kModeNormAndMaShape   = 1;
+   static const int   kModeZExp             = 2;
+   static const int   kModeZExpNormAndShape = 3;
+
+   static const int   fZExpMaxSyst          = 4; ///< maximum number of systematics
 
    GReWeightNuXSecCCQE();
   ~GReWeightNuXSecCCQE();
@@ -75,12 +74,13 @@ namespace rew   {
 
  private:
 
-   void   Init              (void);
-   double CalcWeightNorm    (const EventRecord & event);
-   double CalcWeightMaShape (const EventRecord & event);
-   double CalcWeightMa      (const EventRecord & event);
+   void   Init                (void);
+   double CalcWeightNorm      (const EventRecord & event);
+   double CalcWeightMaShape   (const EventRecord & event);
+   double CalcWeightMa        (const EventRecord & event);
 
-   double CalcWeightZExp    (const EventRecord & event);
+   double CalcWeightZExp      (const EventRecord & event);
+   double CalcWeightZExpShape (const EventRecord & event);
 
    XSecAlgorithmI * fXSecModelDef;    ///< default model
    XSecAlgorithmI * fXSecModel;       ///< tweaked model

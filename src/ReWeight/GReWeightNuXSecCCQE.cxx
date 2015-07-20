@@ -29,6 +29,9 @@
    inconsistent with the current reweighting mode [reported by Rik Gran].
  @ Dec 26, 2014 - AM
    Added Support for z-expansion axial form factor reweighting
+ @ Jul 19, 2015 - AM
+   Updated z-expansion reweighting for explicit rather than general coefficient nobs
+   Added norm and shape z-expansion reweighting
 */
 //____________________________________________________________________________
 
@@ -60,9 +63,13 @@ using namespace genie;
 using namespace genie::rew;
 using std::ostringstream;
 
+static const char* kModelDipole = "genie::DipoleAxialFormFactorModel";
+static const char* kModelZExp   = "genie::ZExpAxialFormFactorModel";
+
 const int GReWeightNuXSecCCQE::kModeMa;
 const int GReWeightNuXSecCCQE::kModeNormAndMaShape;
 const int GReWeightNuXSecCCQE::kModeZExp;
+const int GReWeightNuXSecCCQE::kModeZExpNormAndShape;
 const int GReWeightNuXSecCCQE::fZExpMaxSyst;
 
 //_______________________________________________________________________________________
@@ -89,6 +96,15 @@ bool GReWeightNuXSecCCQE::IsHandled(GSyst_t syst)
    switch(syst) {
 
      case ( kXSecTwkDial_NormCCQE    ) :
+       if((fMode==kModeNormAndMaShape && strcmp(fFFModel.c_str(),kModelDipole) == 0)
+       || (fMode==kModeZExpNormAndShape && strcmp(fFFModel.c_str(),kModelZExp) == 0))
+       { 
+          handle = true;  
+       } else { 
+          handle = false; 
+       }
+       break;
+
      case ( kXSecTwkDial_MaCCQEshape ) :
        if(fMode==kModeNormAndMaShape && strcmp(fFFModel.c_str(),kModelDipole) == 0)
        { 
@@ -111,7 +127,8 @@ bool GReWeightNuXSecCCQE::IsHandled(GSyst_t syst)
      case ( kXSecTwkDial_ZExpA2CCQE ):
      case ( kXSecTwkDial_ZExpA3CCQE ):
      case ( kXSecTwkDial_ZExpA4CCQE ):
-       if(fMode==kModeZExp && strcmp(fFFModel.c_str(),kModelZExp) == 0)
+       if((fMode==kModeZExp             && strcmp(fFFModel.c_str(),kModelZExp) == 0)
+       || (fMode==kModeZExpNormAndShape && strcmp(fFFModel.c_str(),kModelZExp) == 0))
        {
           handle = true;
        } else {
@@ -168,10 +185,8 @@ void GReWeightNuXSecCCQE::Reset(void)
   fMaTwkDial   = 0.; 
   fMaCurr      = fMaDef;
 
-  //fZExpCurrIdx = 0;
   for (int i=0;i<fZExpMaxSyst;i++)
   {
-    //sigmas for ZExp not reset
     fZExpTwkDial[i] = 0.;
     fZExpCurr   [i] = fZExpDef[i];
   } 
@@ -202,7 +217,7 @@ void GReWeightNuXSecCCQE::Reconfigure(void)
   }
   else
   if(fMode==kModeZExp && strcmp(fFFModel.c_str(),kModelZExp) == 0) {
-     int     sign_twk = utils::rew::Sign(0.);
+     int     sign_twk = 0;
      double  fracerr_zexp = 0.;
      GSyst_t syst;
      // loop over all indices and update each
@@ -215,9 +230,34 @@ void GReWeightNuXSecCCQE::Reconfigure(void)
          case 3: syst = kXSecTwkDial_ZExpA4CCQE; break;
          default: return; break;
        }
+       sign_twk = utils::rew::Sign(fZExpTwkDial[i]);
        fracerr_zexp = fracerr->OneSigmaErr(syst, sign_twk);
        fZExpCurr[i] = fZExpDef[i] * (1. + fZExpTwkDial[i] * fracerr_zexp);
      }
+  }
+  else
+  if(fMode==kModeZExpNormAndShape && strcmp(fFFModel.c_str(),kModelZExp) == 0) {
+     int     sign_twk = 0;
+     int     sign_normtwk = utils::rew::Sign(fNormTwkDial);
+     double  fracerr_zexp = 0.;
+     double  fracerr_norm = fracerr->OneSigmaErr(kXSecTwkDial_NormCCQE, sign_normtwk);
+     GSyst_t syst;
+     // loop over all indices and update each
+     for (int i=0;i<fZExpMaxCoef;i++)
+     {
+       switch(i){
+         case 0: syst = kXSecTwkDial_ZExpA1CCQE; break;
+         case 1: syst = kXSecTwkDial_ZExpA2CCQE; break;
+         case 2: syst = kXSecTwkDial_ZExpA3CCQE; break;
+         case 3: syst = kXSecTwkDial_ZExpA4CCQE; break;
+         default: return; break;
+       }
+       sign_twk = utils::rew::Sign(fZExpTwkDial[i]);
+       fracerr_zexp = fracerr->OneSigmaErr(syst, sign_twk);
+       fZExpCurr[i] = fZExpDef[i] * (1. + fZExpTwkDial[i] * fracerr_zexp);
+     }
+     fNormCurr = fNormDef * (1. + fNormTwkDial * fracerr_norm);
+     fNormCurr = TMath::Max(0., fNormCurr);
   }
   else {
     return;
@@ -229,7 +269,7 @@ void GReWeightNuXSecCCQE::Reconfigure(void)
     r.Set(fMaPath, fMaCurr); 
   }
   else
-  if (fMode==kModeZExp)
+  if (fMode==kModeZExp || fMode==kModeZExpNormAndShape)
   {
     ostringstream alg_key;
     for (int i=0;i<fZExpMaxCoef;i++)
@@ -273,6 +313,13 @@ double GReWeightNuXSecCCQE::CalcWeight(const genie::EventRecord & event)
      double wght = this->CalcWeightZExp(event);
      return wght;
   }
+  else
+  if(fMode==kModeZExpNormAndShape && strcmp(fFFModel.c_str(),kModelZExp) == 0) {
+     double wght = 
+         this->CalcWeightNorm(event) *
+         this->CalcWeightZExpShape(event);
+     return wght;
+  }
 
   return 1.;
 }
@@ -294,6 +341,14 @@ double GReWeightNuXSecCCQE::CalcChisq()
      { 
        chisq += TMath::Power(fZExpTwkDial[i], 2.);
      }
+  }
+  else
+  if(fMode==kModeZExpNormAndShape) {
+     for (int i=0;i<fZExpMaxCoef;i++)
+     { 
+       chisq += TMath::Power(fZExpTwkDial[i], 2.);
+     }
+     chisq += TMath::Power(fNormTwkDial, 2.);
   }
   return chisq;
 }
@@ -472,3 +527,48 @@ double GReWeightNuXSecCCQE::CalcWeightZExp(const genie::EventRecord & event)
   return new_weight;
 }
 //_______________________________________________________________________________________
+double GReWeightNuXSecCCQE::CalcWeightZExpShape(const genie::EventRecord & event) 
+{
+  bool tweaked = false;
+  for (int i=0;i<fZExpMaxCoef;i++)
+  {
+    tweaked = tweaked || (TMath::Abs(fZExpTwkDial[i]) > controls::kASmallNum);
+  }
+  if(!tweaked) return 1.0;
+
+  Interaction * interaction = event.Summary();
+
+  interaction->KinePtr()->UseSelectedKinematics();
+  interaction->SetBit(kIAssumeFreeNucleon);
+
+  double old_xsec   = event.DiffXSec();
+  double old_weight = event.Weight();
+  double new_xsec   = fXSecModel->XSec(interaction, kPSQ2fE);
+  double new_weight = old_weight * (new_xsec/old_xsec);
+
+//LOG("ReW", pWARN) << "differential cross section (old) = " << old_xsec;
+//LOG("ReW", pWARN) << "differential cross section (new) = " << new_xsec;
+//LOG("ReW", pWARN) << "event generation weight = " << old_weight;
+//LOG("ReW", pWARN) << "new weight = " << new_weight;
+
+//double old_integrated_xsec = event.XSec();
+  double old_integrated_xsec = fXSecModelDef -> Integral(interaction);
+  double new_integrated_xsec = fXSecModel    -> Integral(interaction);   
+  assert(new_integrated_xsec > 0);
+  new_weight *= (old_integrated_xsec/new_integrated_xsec);
+
+//LOG("ReW", pWARN) << "integrated cross section (old) = " << old_integrated_xsec;
+//LOG("ReW", pWARN) << "integrated cross section (new) = " << new_integrated_xsec;
+//LOG("ReW", pWARN) << "new weight (normalized to const integral) = " << new_weight;
+
+  interaction->KinePtr()->ClearRunningValues();
+  interaction->ResetBit(kIAssumeFreeNucleon);
+
+#ifdef _G_REWEIGHT_CCQE_DEBUG_
+  double E  = interaction->InitState().ProbeE(kRfHitNucRest);
+  double Q2 = interaction->Kine().Q2(true);
+  fTestNtp->Fill(E,Q2,new_weight);
+#endif
+
+  return new_weight;
+}

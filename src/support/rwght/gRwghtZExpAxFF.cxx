@@ -7,7 +7,7 @@
          for use with the z-expansion axial form factor
 
 \syntax  grwghtzexpaxff -f filename -t NTwk1,NTwk2,... [-n nev] [-o fileOutName]
-         [-s SigmaLo1,SigmaHi1,SigmaLo2,SigmaHi2,...]
+         [-s SigmaLo1,SigmaHi1,SigmaLo2,SigmaHi2,...] [-m NTwkN]
 
          where 
          [] is an optional argument
@@ -20,6 +20,8 @@
             values are comma separated, given as percentages
             requires 2x number of fields from -t option
             default value is 10% on all coefficients
+         -m number of tweaks on normalization
+            puts reweighting into norm+shape mode
 
 \author  Aaron Meyer <asmeyer2012 \at uchicago.edu>
          University of Chicago, Fermilab
@@ -83,9 +85,9 @@ using std::ostringstream;
 void PrintSyntax();
 void GetEventRange      (Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nlast);
 void GetCommandLineArgs (int argc, char ** argv);
-int  GetNumberOfWeights (int* ntwk, int kmaxinc);
-bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
-                           GSystSet& syst, GReWeightNuXSecCCQE* rwccqe);
+int  GetNumberOfWeights (int* ntwk, int kmaxinc, int normtwk, bool donorm);
+bool IncrementCoefficients(int* ntwk, int kmaxinc, int normtwk, bool donorm,
+                         float* twkvals, GSystSet& syst, GReWeightNuXSecCCQE* rwccqe);
 GSyst_t GetZExpSystematic(int ip);
 
 string gOptInpFilename;
@@ -94,6 +96,8 @@ string gOptOutFilename;
 Long64_t gOptNEvt1;
 Long64_t gOptNEvt2;
 int    gOptKmaxInc = 0;
+int    gOptNormTweaks = 0;
+bool   gOptDoNorm = false; // whether to be in norm+shape mode or not
 bool   gOptSigmaDefined = false; // handles setting of SigMin, SigMax
 int    gOptNTweaks[MAX_COEF] = {0 };
 float  gOptSigMin [MAX_COEF] = {0.};
@@ -125,9 +129,6 @@ int main(int argc, char ** argv)
   Long64_t nfirst = 0;
   Long64_t nlast  = 0;
   GetEventRange(nev_in_file, nfirst, nlast);
-  //int nev = (gOptNEvt > 0) ?
-  //      TMath::Min(gOptNEvt, (int)tree->GetEntries()) :
-  //      (int) tree->GetEntries();
   int nev = int(nlast - nfirst + 1);
 
   LOG("rwghtzexpaxff", pNOTICE) << "Will process " << nev << " events";
@@ -160,7 +161,8 @@ int main(int argc, char ** argv)
   // Create a concrete weight calculator to fine-tune
   GReWeightNuXSecCCQE * rwccqe = 
     dynamic_cast<GReWeightNuXSecCCQE *> (rw.WghtCalc("xsec_ccqe"));
-  rwccqe->SetMode(GReWeightNuXSecCCQE::kModeZExp);
+  if (gOptDoNorm) { rwccqe->SetMode(GReWeightNuXSecCCQE::kModeZExpNormAndShape); }
+  else            { rwccqe->SetMode(GReWeightNuXSecCCQE::kModeZExp); }
   // In case uncertainties need to be altered
   GSystUncertainty * unc = GSystUncertainty::Instance();
 
@@ -169,11 +171,11 @@ int main(int argc, char ** argv)
   //rwccqe -> RewNuebar (false); 
   //rwccqe -> RewNumubar(false); 
 
-
   // Declare the weights and twkvals arrays 
   const int n_events = (const int) nev;
-  const int n_params = (const int) gOptKmaxInc;
-  const int n_points = (const int) GetNumberOfWeights(gOptNTweaks,gOptKmaxInc);
+  const int n_params = (const int) (gOptKmaxInc + 1); // +1 for norm
+  const int n_points =
+   (const int) GetNumberOfWeights(gOptNTweaks,gOptKmaxInc,gOptNormTweaks,gOptDoNorm);
   // if segfaulting here, may need to increase MAX_COEF
   // copied from gtestRwght... seems inefficient
   // -- couldn't we just load straight to the tree? doing so would prevent segfaults
@@ -183,13 +185,23 @@ int main(int argc, char ** argv)
   // Initialize
   for (int ipt = 0; ipt < n_points; ipt++)
   {
-    for (int iev = 0; iev < nev; iev++)      weights[iev][ipt] = 1.;
-    for (int ipr = 0; ipr < n_params; ipr++) twkvals[ipt][ipr] = (gOptNTweaks[ipr] > 1 ? -1 : 0);
+    for (int iev = 0; iev < nev; iev++) { weights[iev][ipt] = 1.; }
+    twkvals[ipt][0] = (gOptDoNorm && (gOptNormTweaks > 1)) ? -1 : 0;
+    for (int ipr = 1; ipr < n_params; ipr++)
+    {
+      twkvals[ipt][ipr] = (gOptNTweaks[ipr-1] > 1 ? -1 : 0);
+    }
   }
 
   // set first values for weighting
+  if (gOptDoNorm)
+  {
+    rwccqe->SetSystematic(kXSecTwkDial_NormCCQE,twkvals[0][0]);
+    LOG("rwghtzexpaxff", pNOTICE) << "Setting z-expansion tweak for norm : "
+      << twkvals[0][0];
+  }
   GSyst_t gsyst;
-  for (int ipr = 0; ipr < n_params; ipr++)
+  for (int ipr = 1; ipr < n_params; ipr++)
   {
     gsyst = GetZExpSystematic(ipr);
     rwccqe->SetSystematic(gsyst,twkvals[0][ipr]);
@@ -203,7 +215,7 @@ int main(int argc, char ** argv)
     }
   }
 
-  // point loop
+  // point loop (number of parameter combinations)
   for (int ipt = 0; ipt < n_points; ipt++) {
     rw.Reconfigure();
     // Event loop
@@ -230,7 +242,8 @@ int main(int argc, char ** argv)
       {
         twkvals[ipt+1][ipr] = twkvals[ipt][ipr];
       }
-      IncrementCoefficients(gOptNTweaks,gOptKmaxInc,twkvals[ipt+1],syst,rwccqe);
+      IncrementCoefficients(gOptNTweaks,n_params,gOptNormTweaks,gOptDoNorm,
+        twkvals[ipt+1],syst,rwccqe);
     }
   }   // points
 
@@ -255,8 +268,11 @@ int main(int argc, char ** argv)
   // create and add branches for each z-expansion coefficient
   ostringstream twk_dial_brnch_name;
   for (int ipr = 0; ipr < n_params; ipr++) {
+    if (!gOptDoNorm && ipr == 0) { continue; } // skip norm if not requested
     twk_dial_brnch_name.str("");
-    twk_dial_brnch_name << "twk_dial_param_" << ipr+1;
+    if (ipr == 0) { twk_dial_brnch_name << "twk_dial_param_norm";      }
+    else          { twk_dial_brnch_name << "twk_dial_param_" << ipr; }
+    LOG("rwghtzexpaxff", pWARN) << "Branch name = " << twk_dial_brnch_name.str();
     branch_twkdials_array[ipr] = new TArrayF(n_points);
     wght_tree->Branch(twk_dial_brnch_name.str().c_str(), branch_twkdials_array[ipr]);
   }
@@ -272,14 +288,14 @@ int main(int argc, char ** argv)
        str_wght << ", tweaked parameter values : ";
        for (int ipr = 0; ipr < n_params; ipr++) {
           if (ipr > 0) str_wght << ", ";
-          str_wght << ipr+1 << " -> " << twkvals[ipt][ipr];
+          str_wght << ipr << " -> " << twkvals[ipt][ipr];
        }
        LOG("grwghtzexpaxff", pNOTICE)
           << "Filling tree with wght = " << weights[iev - nfirst][ipt] << str_wght.str();
 
        // fill tree
        branch_weight_array   -> AddAt (weights [iev - nfirst][ipt], ipt);
-       for (int ipr = 0; ipr < n_params; ipr++)
+       for (int ipr = (gOptDoNorm ? 0 : 1); ipr < n_params; ipr++) // skip norm if not requested
          { branch_twkdials_array[ipr] -> AddAt (twkvals[ipt][ipr], ipt); }
 
     } // twk_dial loop
@@ -288,9 +304,18 @@ int main(int argc, char ** argv)
 
   wght_file->cd();
   wght_tree->Write();
-  delete wght_tree;
   wght_tree = 0;
   wght_file->Close();
+
+  // free memory
+  delete wght_tree;
+  delete wght_file;
+  for (int ipr = 0; ipr < n_params; ipr++) {
+    if (!gOptDoNorm && ipr == 0) { continue; }
+    delete branch_twkdials_array[ipr];
+  }
+  delete branch_twkdials_array;
+  delete branch_weight_array;
 
   LOG("rwghtzexpaxff", pNOTICE)  << "Done!";
   return 0;
@@ -401,6 +426,14 @@ void GetCommandLineArgs(int argc, char ** argv)
     }
   }
 
+  // number of norm tweaks:
+  if( parser.OptionExists('m') ) {
+    LOG("rwghtzexpaxff", pINFO) << "Reading number of tweaks on normalization";
+    string coef = parser.ArgAsString('m');
+    gOptDoNorm = true;
+    gOptNormTweaks   = atof(coef.c_str());
+    LOG("rwghtzexpaxff",pINFO)<<"Number of tweaks on norm : "<< gOptNormTweaks;
+  }
 }
 //_________________________________________________________________________________
 void GetEventRange(Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nlast)
@@ -433,10 +466,10 @@ void GetEventRange(Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nlast)
   assert(nfirst <= nlast && nfirst >= 0 && nlast <= nev_in_file-1);
 }
 //_________________________________________________________________________________
-bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
-                           GSystSet& syst, GReWeightNuXSecCCQE* rwccqe) 
+bool IncrementCoefficients(int* ntwk, int kmaxinc, int normtwk, bool donorm,
+                           float* twkvals, GSystSet& syst, GReWeightNuXSecCCQE* rwccqe) 
 {
-  if (kmaxinc < 1)
+  if (kmaxinc < 2 && ! donorm)
   {
     LOG("grwghtzexpaxff",pERROR) << "No coefficients to increment";
     return false;
@@ -444,28 +477,46 @@ bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
 
   int ip = -1;
   bool stopflag = false;
-  GSyst_t gsyst;
+  GSyst_t gsyst = kXSecTwkDial_NormCCQE;
   do
   {
-    if (ip > -1)
+    if (ip > 0 || (ip == 0 && donorm))
     { // fully incremented a coefficient; reset it and continue to the next
-      if (ntwk[ip] > 1) { twkvals[ip] = -1.; }
-      else              { twkvals[ip] =  0.; }
+      if (ip == 0) { twkvals[0 ] = (normtwk    > 1 ? -1. : 0.); }
+      else         { twkvals[ip] = (ntwk[ip-1] > 1 ? -1. : 0.); }
 
       // set the value manually
-      rwccqe->SetSystematic(gsyst, twkvals[ip]);
+      //rwccqe->SetSystematic(gsyst, twkvals[ip]);
+      syst.Set(gsyst, twkvals[ip]);
       LOG("rwghtzexpaxff", pNOTICE) << "Setting z-expansion tweak for param " 
         <<ip<<" : " << twkvals[ip];
     }
     stopflag = true;
 
-    ip++;                             // increment index
-    if (ip == kmaxinc) return false;  // done with incrementing
-    gsyst = GetZExpSystematic(ip);
+    ip++;                                 // increment index
+    if (ip == kmaxinc) { return false; }  // done with incrementing
+    if (ip == 0 && ! donorm)
+    {
+      stopflag = false;
+      continue;  // skip when not doing norm
+    }
+    // set to next systematic
+    if (ip == 0) { gsyst = kXSecTwkDial_NormCCQE; }
+    else         { gsyst = GetZExpSystematic(ip); }
 
-    if (ntwk[ip] > 1) { twkvals[ip] += 2./float(ntwk[ip]-1); }
-    else              { stopflag = false; continue; }
+    // increment systematic
+    if (ip == 0)
+    {
+      if (normtwk > 1) { twkvals[0] += 2./float(normtwk-1); }
+      else             { stopflag = false; continue; }
+    }
+    else
+    {
+      if (ntwk[ip-1] > 1) { twkvals[ip] += 2./float(ntwk[ip-1]-1); }
+      else                { stopflag = false; continue; }
+    }
 
+    // set the systematic to the new tweak value
     // actual updating of this will be handled by GReWeight::Reconfigure
     syst.Set(gsyst, twkvals[ip]);
     LOG("rwghtzexpaxff", pNOTICE) << "Setting z-expansion tweak for param " 
@@ -480,14 +531,33 @@ bool IncrementCoefficients(int* ntwk, int kmaxinc, float* twkvals,
   return false;
 }
 //_________________________________________________________________________________
-int GetNumberOfWeights(int* ntwk, int kmaxinc)
+int GetNumberOfWeights(int* ntwk, int kmaxinc, int normtwk, bool donorm)
 {
   int  num_pts = 1;
   for (int i=0;i<kmaxinc;i++)
   {
     if (ntwk[i] > 1) num_pts *= ntwk[i];
   }
+  if (donorm)
+  {
+    if (normtwk > 1) num_pts *= normtwk;
+  }
   return num_pts;
+}
+//_________________________________________________________________________________
+GSyst_t GetZExpSystematic(int ip)
+{
+    switch(ip){
+      case 1: return kXSecTwkDial_ZExpA1CCQE; break;
+      case 2: return kXSecTwkDial_ZExpA2CCQE; break;
+      case 3: return kXSecTwkDial_ZExpA3CCQE; break;
+      case 4: return kXSecTwkDial_ZExpA4CCQE; break;
+      default:
+        LOG("rwghtzexpaxff", pFATAL) 
+          << "Cannot find systematic corresponding to parameter " << ip;
+        exit(0);
+        break;
+    }
 }
 //_________________________________________________________________________________
 void PrintSyntax(void)
@@ -499,21 +569,7 @@ void PrintSyntax(void)
      << "     -t ntwk1[,ntwk2[,...]]  \n"
      << "    [-n nev]                 \n"
      << "    [-s sigLo1,sigHi1[,...]] \n"
-     << "    [-o output_weights_file]";
-}
-//_________________________________________________________________________________
-GSyst_t GetZExpSystematic(int ip)
-{
-    switch(ip){
-      case 0: return kXSecTwkDial_ZExpA1CCQE; break;
-      case 1: return kXSecTwkDial_ZExpA2CCQE; break;
-      case 2: return kXSecTwkDial_ZExpA3CCQE; break;
-      case 3: return kXSecTwkDial_ZExpA4CCQE; break;
-      default:
-        LOG("rwghtzexpaxff", pFATAL) 
-          << "Cannot find systematic corresponding to parameter " << ip;
-        exit(0);
-        break;
-    }
+     << "    [-o output_weights_file] \n"
+     << "    [-m ntwkNorm]" ;
 }
 //_________________________________________________________________________________
