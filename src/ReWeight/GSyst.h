@@ -46,10 +46,11 @@ typedef enum EGSyst {
   kXSecTwkDial_MaNCEL,            ///< tweak Ma NCEL, affects dsigma(NCEL)/dQ2 both in shape and normalization
   kXSecTwkDial_EtaNCEL,           ///< tweak NCEL strange axial form factor eta, affects dsigma(NCEL)/dQ2 both in shape and normalization
   // CCQE tweaking parameters:
-  kXSecTwkDial_NormCCQE,          ///< tweak CCQE normalization (energy independent)
   kXSecTwkDial_NormCCQEenu,       ///< tweak CCQE normalization (maintains dependence on neutrino energy)
+  kXSecTwkDial_NormCCQE,          ///< tweak Ma CCQE normalization (energy independent)
   kXSecTwkDial_MaCCQEshape,       ///< tweak Ma CCQE, affects dsigma(CCQE)/dQ2 in shape only (normalized to constant integral)
   kXSecTwkDial_MaCCQE,            ///< tweak Ma CCQE, affects dsigma(CCQE)/dQ2 both in shape and normalization
+  kXSecTwkDial_ZNormCCQE,         ///< tweak Z-expansion CCQE normalization (energy independent)
   kXSecTwkDial_ZExpA1CCQE,        ///< tweak Z-expansion coefficient 1, affects dsigma(CCQE)/dQ2 both in shape and normalization
   kXSecTwkDial_ZExpA2CCQE,        ///< tweak Z-expansion coefficient 2, affects dsigma(CCQE)/dQ2 both in shape and normalization
   kXSecTwkDial_ZExpA3CCQE,        ///< tweak Z-expansion coefficient 3, affects dsigma(CCQE)/dQ2 both in shape and normalization
@@ -170,10 +171,11 @@ public:
    switch(syst) {
      case ( kXSecTwkDial_MaNCEL           ) : return "MaNCEL";               break;
      case ( kXSecTwkDial_EtaNCEL          ) : return "EtaNCEL";              break;
-     case ( kXSecTwkDial_NormCCQE         ) : return "NormCCQE";             break;
      case ( kXSecTwkDial_NormCCQEenu      ) : return "NormCCQEenu";          break;
+     case ( kXSecTwkDial_NormCCQE         ) : return "NormCCQE";             break;
      case ( kXSecTwkDial_MaCCQE           ) : return "MaCCQE";               break;
      case ( kXSecTwkDial_MaCCQEshape      ) : return "MaCCQEshape";          break;
+     case ( kXSecTwkDial_ZNormCCQE        ) : return "ZNormCCQE";            break;
      case ( kXSecTwkDial_ZExpA1CCQE       ) : return "ZExpA1CCQE";           break;
      case ( kXSecTwkDial_ZExpA2CCQE       ) : return "ZExpA2CCQE";           break;
      case ( kXSecTwkDial_ZExpA3CCQE       ) : return "ZExpA3CCQE";           break;
@@ -251,10 +253,11 @@ public:
    {
        kXSecTwkDial_MaNCEL,
        kXSecTwkDial_EtaNCEL,
-       kXSecTwkDial_NormCCQE,   
        kXSecTwkDial_NormCCQEenu,   
+       kXSecTwkDial_NormCCQE,   
        kXSecTwkDial_MaCCQE,        
        kXSecTwkDial_MaCCQEshape,   
+       kXSecTwkDial_ZNormCCQE,   
        kXSecTwkDial_ZExpA1CCQE,        
        kXSecTwkDial_ZExpA2CCQE,        
        kXSecTwkDial_ZExpA3CCQE,        

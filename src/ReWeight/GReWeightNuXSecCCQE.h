@@ -46,7 +46,6 @@ namespace rew   {
    static const int   kModeMa               = 0;
    static const int   kModeNormAndMaShape   = 1;
    static const int   kModeZExp             = 2;
-   static const int   kModeZExpNormAndShape = 3;
 
    static const int   fZExpMaxSyst          = 4; ///< maximum number of systematics
 
@@ -80,7 +79,6 @@ namespace rew   {
    double CalcWeightMa        (const EventRecord & event);
 
    double CalcWeightZExp      (const EventRecord & event);
-   double CalcWeightZExpShape (const EventRecord & event);
 
    XSecAlgorithmI * fXSecModelDef;    ///< default model
    XSecAlgorithmI * fXSecModel;       ///< tweaked model

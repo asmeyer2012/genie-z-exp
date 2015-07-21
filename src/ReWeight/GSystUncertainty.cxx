@@ -94,6 +94,7 @@ void GSystUncertainty::SetDefaults(void)
   this->SetUncertainty( kXSecTwkDial_NormCCQE,       0.20, 0.15);
   this->SetUncertainty( kXSecTwkDial_MaCCQEshape,    0.10, 0.10);
   this->SetUncertainty( kXSecTwkDial_MaCCQE,         0.25, 0.15);
+  this->SetUncertainty( kXSecTwkDial_ZNormCCQE,      0.20, 0.15);
   this->SetUncertainty( kXSecTwkDial_ZExpA1CCQE,     0.10, 0.10);
   this->SetUncertainty( kXSecTwkDial_ZExpA2CCQE,     0.10, 0.10);
   this->SetUncertainty( kXSecTwkDial_ZExpA3CCQE,     0.10, 0.10);

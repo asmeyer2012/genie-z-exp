@@ -24,7 +24,7 @@
             puts reweighting into norm+shape mode
 
 \author  Aaron Meyer <asmeyer2012 \at uchicago.edu>
-         University of Chicago, Fermilab
+         University of Chicago, Fermi National Accelerator Laboratory
 
          based on gtestRewght by
 
@@ -87,7 +87,7 @@ void GetEventRange      (Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nla
 void GetCommandLineArgs (int argc, char ** argv);
 int  GetNumberOfWeights (int* ntwk, int kmaxinc, int normtwk, bool donorm);
 bool IncrementCoefficients(int* ntwk, int kmaxinc, int normtwk, bool donorm,
-                         float* twkvals, GSystSet& syst, GReWeightNuXSecCCQE* rwccqe);
+                         float* twkvals, GSystSet& syst);
 GSyst_t GetZExpSystematic(int ip);
 
 string gOptInpFilename;
@@ -161,8 +161,7 @@ int main(int argc, char ** argv)
   // Create a concrete weight calculator to fine-tune
   GReWeightNuXSecCCQE * rwccqe = 
     dynamic_cast<GReWeightNuXSecCCQE *> (rw.WghtCalc("xsec_ccqe"));
-  if (gOptDoNorm) { rwccqe->SetMode(GReWeightNuXSecCCQE::kModeZExpNormAndShape); }
-  else            { rwccqe->SetMode(GReWeightNuXSecCCQE::kModeZExp); }
+  rwccqe->SetMode(GReWeightNuXSecCCQE::kModeZExp);
   // In case uncertainties need to be altered
   GSystUncertainty * unc = GSystUncertainty::Instance();
 
@@ -196,7 +195,7 @@ int main(int argc, char ** argv)
   // set first values for weighting
   if (gOptDoNorm)
   {
-    rwccqe->SetSystematic(kXSecTwkDial_NormCCQE,twkvals[0][0]);
+    syst.Set(kXSecTwkDial_ZNormCCQE, twkvals[0][0]);
     LOG("rwghtzexpaxff", pNOTICE) << "Setting z-expansion tweak for norm : "
       << twkvals[0][0];
   }
@@ -204,7 +203,7 @@ int main(int argc, char ** argv)
   for (int ipr = 1; ipr < n_params; ipr++)
   {
     gsyst = GetZExpSystematic(ipr);
-    rwccqe->SetSystematic(gsyst,twkvals[0][ipr]);
+    syst.Set(gsyst, twkvals[0][ipr]);
     LOG("rwghtzexpaxff", pNOTICE) << "Setting z-expansion tweak for param " 
       <<ipr<<" : " << twkvals[0][ipr];
     if (gOptSigmaDefined)
@@ -243,7 +242,7 @@ int main(int argc, char ** argv)
         twkvals[ipt+1][ipr] = twkvals[ipt][ipr];
       }
       IncrementCoefficients(gOptNTweaks,n_params,gOptNormTweaks,gOptDoNorm,
-        twkvals[ipt+1],syst,rwccqe);
+        twkvals[ipt+1],syst);
     }
   }   // points
 
@@ -344,9 +343,6 @@ void GetCommandLineArgs(int argc, char ** argv)
     gOptOutFilename = parser.ArgAsString('o');
   } else {
     LOG("rwghtzexpaxff", pINFO) << "Setting default output filename";
-    //ostringstream nm;
-    //nm << "weights_" << GSyst::AsString(gOptSyst) << ".root";
-    //gOptOutFilename = nm.str();
     gOptOutFilename = "test_rw_zexp_axff.root";
   }
 
@@ -467,7 +463,7 @@ void GetEventRange(Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nlast)
 }
 //_________________________________________________________________________________
 bool IncrementCoefficients(int* ntwk, int kmaxinc, int normtwk, bool donorm,
-                           float* twkvals, GSystSet& syst, GReWeightNuXSecCCQE* rwccqe) 
+                           float* twkvals, GSystSet& syst) 
 {
   if (kmaxinc < 2 && ! donorm)
   {
@@ -477,7 +473,7 @@ bool IncrementCoefficients(int* ntwk, int kmaxinc, int normtwk, bool donorm,
 
   int ip = -1;
   bool stopflag = false;
-  GSyst_t gsyst = kXSecTwkDial_NormCCQE;
+  GSyst_t gsyst = kXSecTwkDial_ZNormCCQE;
   do
   {
     if (ip > 0 || (ip == 0 && donorm))
@@ -486,7 +482,6 @@ bool IncrementCoefficients(int* ntwk, int kmaxinc, int normtwk, bool donorm,
       else         { twkvals[ip] = (ntwk[ip-1] > 1 ? -1. : 0.); }
 
       // set the value manually
-      //rwccqe->SetSystematic(gsyst, twkvals[ip]);
       syst.Set(gsyst, twkvals[ip]);
       LOG("rwghtzexpaxff", pNOTICE) << "Setting z-expansion tweak for param " 
         <<ip<<" : " << twkvals[ip];
@@ -501,7 +496,7 @@ bool IncrementCoefficients(int* ntwk, int kmaxinc, int normtwk, bool donorm,
       continue;  // skip when not doing norm
     }
     // set to next systematic
-    if (ip == 0) { gsyst = kXSecTwkDial_NormCCQE; }
+    if (ip == 0) { gsyst = kXSecTwkDial_ZNormCCQE; }
     else         { gsyst = GetZExpSystematic(ip); }
 
     // increment systematic
