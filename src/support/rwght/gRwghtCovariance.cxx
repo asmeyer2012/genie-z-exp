@@ -3,12 +3,15 @@
 
 \program grwghtcov
 
-\brief   Generates weights given an input GHEP event file and for a given
-         set of systematic parameters (supported by the ReWeight package)
+\brief   Generates weights given an input GHEP event file, a 
+         set of systematic parameters (supported by the ReWeight package),
          and a covariance matrix for the input set of parameters.
+         The covariance matrix should be in the form a ROOT file containing
+         only a TMatrixD object which is square and symmetric.
          It outputs a ROOT file containing a tree with an entry for every 
          input event. Each such tree entry contains a TArrayF of all computed 
-         weights and a TArrayF of all used tweak dial values and systematics. 
+         weights and TArrayF for each requested systematic of all of the
+         corresponding randomly generated tweak dial values.
 
 \syntax  grwghtcov \
            -f input_event_file 
@@ -24,7 +27,8 @@
 
          -f 
             Specifies a GHEP input file.
-         -c Specifies a binary ROOT file which contains the covariance matrix
+         -c
+            Specifies a binary ROOT file which contains the covariance matrix
             as a TMatrixD object.
          -s 
             Specifies the systematic parameters to tweak.
@@ -59,18 +63,14 @@
 //____________________________________________________________________________
 
 
-//#include <string>
-//#include <sstream>
-#include <stdio.h>
-
 #include <TArrayF.h>
 #include <TDecompChol.h>
+#include <TDecompLU.h>
 #include <TFile.h>
 #include <TKey.h>
 #include <TList.h>
 #include <TMath.h>
 #include <TMatrixD.h>
-#include <TMatrixT.h>
 #include <TTree.h>
 
 #include "Conventions/Controls.h"
@@ -80,37 +80,36 @@
 #include "Ntuple/NtpMCEventRecord.h"
 #include "Numerical/RandomGen.h"
 #include "Messenger/Messenger.h"
-#include "ReWeight/GReWeightI.h"
-#include "ReWeight/GSystSet.h"
 #include "ReWeight/GReWeight.h"
+#include "ReWeight/GReWeightI.h"
+#include "ReWeight/GReWeightAGKY.h"
+#include "ReWeight/GReWeightDISNuclMod.h"
+#include "ReWeight/GReWeightFGM.h"
+#include "ReWeight/GReWeightFZone.h"
+#include "ReWeight/GReWeightINuke.h"
+#include "ReWeight/GReWeightNonResonanceBkg.h"
 #include "ReWeight/GReWeightNuXSecCCQE.h"
 #include "ReWeight/GReWeightNuXSecCCQEvec.h"
 #include "ReWeight/GReWeightNuXSecCCRES.h"
 #include "ReWeight/GReWeightNuXSecNCRES.h"
 #include "ReWeight/GReWeightNuXSecDIS.h"
 #include "ReWeight/GReWeightNuXSecCOH.h"
-#include "ReWeight/GReWeightNonResonanceBkg.h"
-#include "ReWeight/GReWeightFGM.h"
-#include "ReWeight/GReWeightDISNuclMod.h"
 #include "ReWeight/GReWeightResonanceDecay.h"
-#include "ReWeight/GReWeightFZone.h"
-#include "ReWeight/GReWeightINuke.h"
-#include "ReWeight/GReWeightAGKY.h"
+#include "ReWeight/GSystSet.h"
 #include "ReWeight/GSystUncertainty.h"
 #include "Utils/CmdLnArgParser.h"
 #include "Utils/StringUtils.h"
 
 using namespace genie;
 using namespace genie::rew;
-using std::string;
 using std::ostringstream;
 
 void PrintSyntax();
-void GetEventRange      (Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nlast);
-void GetCommandLineArgs (int argc, char ** argv);
+void GetEventRange       (Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nlast);
+void GetCommandLineArgs  (int argc, char ** argv);
 void GetCorrelationMatrix(string fname, TMatrixD *& cmat);
-void GenerateTweaks(int n_params, float * twk, TDecompChol & dchol);
-void AdoptWeightCalcs   (vector<GSyst_t> lsyst, GReWeight & rw);
+void GenerateTweaks      (int n_params, float * twk, TDecompLU & dlu);
+void AdoptWeightCalcs    (vector<GSyst_t> lsyst, GReWeight & rw);
 bool FindIncompatibleSystematics(vector<GSyst_t> lsyst);
 
 vector<GSyst_t> gOptVSyst;
@@ -142,19 +141,42 @@ int main(int argc, char ** argv)
     exit(1);
   }
   LOG("grwghtcov", pNOTICE) << "Input tree header: " << *thdr;
-  TMatrixD *cmat = NULL;
-  GetCorrelationMatrix(gOptInpCovariance,cmat);
-  TDecompChol dchol(*cmat);
-  LOG("grwghtcov", pNOTICE)<< dchol.GetMatrix()(0,0);
-  LOG("grwghtcov", pNOTICE)<< dchol.GetMatrix()(1,0);
-  LOG("grwghtcov", pNOTICE)<< dchol.GetMatrix()(0,1);
-  LOG("grwghtcov", pNOTICE)<< dchol.GetMatrix()(1,1);
   if(!FindIncompatibleSystematics(gOptVSyst))
   {
     LOG("grwghtcov", pFATAL) << "Error: conflicting systematics";
     gAbortingInErr = true;
     exit(1);
   }
+
+  //
+  // Preparation for finding correlated vectors
+  //
+  // Solutions are subject to constraint of an error ellipse with equation:
+  //  1 = x^T.Cor^-1.x 
+  // x is a vector of tweaks to apply to the systematics
+  // Cholesky Decomposition solves for U in equation:
+  //  Cor^-1 = U^T.U
+  // LU decomposition used to solve for x:
+  //  L.U.x = b
+  // where L=I and b is a vector of random numbers with b^T.b = 1
+  //
+
+  TMatrixD *cmat = NULL;
+  // Gets Cor^-1, which is needed in decompositions
+  GetCorrelationMatrix(gOptInpCovariance,cmat);
+  TDecompChol dchol(*cmat);
+  if(!dchol.Decompose()) {
+    LOG("grwghtcov", pFATAL) << "Could not decompose correlation matrix";
+    gAbortingInErr = true;
+    exit(1);
+  }
+  TDecompLU dlu(dchol.GetU());
+  //LOG("grwghtcov", pNOTICE) << "Correlation Matrix:";
+  //dchol.GetMatrix().Print();
+  //LOG("grwghtcov", pNOTICE) << "Upper Triangle:";
+  //dchol.GetU().Print();
+  //LOG("grwghtcov", pNOTICE) << "Decomposed Matrix:";
+  //dlu.Print();
 
   NtpMCEventRecord * mcrec = 0;
   tree->SetBranchAddress("gmcrec", &mcrec);
@@ -171,7 +193,7 @@ int main(int argc, char ** argv)
   // Create a GReWeight object and add to it a set of 
   // weight calculators
   //
-  // If seg-faulting here, need to change
+  // If seg-faulting here, probably need to change
   // models in UserPhysicsOptions.xml and other config files
   //
 
@@ -218,6 +240,7 @@ int main(int argc, char ** argv)
   TTree * wght_tree = NULL;
   for (int itk = 0; itk < gOptNTwk; itk++) {
     // Make temporary output trees for saving the weights.
+    // This step is necessary because ROOT trees cannot be edited once filled
     // Later consolidate the trees into a single tree with the requested filename
     tmpName.str("");
     tmpName << "_temporary_rwght." <<itk <<"." <<gOptRunKey <<".root";
@@ -231,15 +254,15 @@ int main(int argc, char ** argv)
 
     // Construct multiple branches to streamline loading later
     // Load tweaks into reweighting
-    GenerateTweaks(n_params, twkvals, dchol);
+    GenerateTweaks(n_params, twkvals, dlu);
     ip = 0;
     for (it = gOptVSyst.begin();it != gOptVSyst.end(); it++, ip++) {
       twk_dial_brnch_name.str("");
       twk_dial_brnch_name << "twk_" << GSyst::AsString(*it);
       // each array element individually
       wght_tree->Branch(twk_dial_brnch_name.str().c_str(), &twkvals[ip]);
-      LOG("grwghtcov", pINFO) << "New branch : " << twk_dial_brnch_name.str();
-      LOG("grwghtcov", pINFO) << "Setting systematic : " <<GSyst::AsString(*it) <<", " <<twkvals[ip];
+      LOG("grwghtcov", pINFO) << "Setting systematic : "
+        <<GSyst::AsString(*it) <<", " <<twkvals[ip];
       syst.Set(*it,twkvals[ip]);
     }
     rw.Reconfigure();
@@ -257,7 +280,7 @@ int main(int argc, char ** argv)
       tree->GetEntry(iev);
 
       EventRecord & event = *(mcrec->event);
-      LOG("rwghtzexpaxff", pNOTICE) << "Event number   = " << iev;
+      LOG("rwghtzexpaxff", pNOTICE) << "Event_num  => " << iev;
       //LOG("rwghtzexpaxff", pNOTICE) << event;
 
       branch_weight = rw.CalcWeight(event);
@@ -271,6 +294,7 @@ int main(int argc, char ** argv)
     wght_tree->Write();
     wght_file->Close();
     //delete wght_tree; // segfault when deleted
+    wght_tree = 0;
     delete wght_file;
   } // tweak loop
 
@@ -278,8 +302,12 @@ int main(int argc, char ** argv)
   file.Close();
 
   // open temporary trees for consolidation
+  LOG("rwghtzexpaxff", pNOTICE)
+    << "Consolidating temporary files into ROOT file " << gOptOutFilename;
   wght_file = new TFile(gOptOutFilename.c_str(),"RECREATE"); // new file
   wght_tree = new TTree("covrwt","GENIE covariant reweighting tree");
+  wght_tree->Branch("n_tweaks", &gOptNTwk);
+  wght_tree->Branch("eventnum", &branch_eventnum);
   TFile * file_list[n_tweaks];
   TTree * wght_list[n_tweaks];
   for (int itk=0; itk < n_tweaks; itk++) {
@@ -287,8 +315,6 @@ int main(int argc, char ** argv)
     tmpName << "_temporary_rwght." <<itk <<"." <<gOptRunKey <<".root";
     file_list[itk] = new TFile(tmpName.str().c_str(),"READ");
     wght_list[itk] = (TTree*)file_list[itk]->Get("covrwt");
-    wght_tree->Branch("eventnum", &branch_eventnum);
-    wght_tree->Branch("weights",  &branch_weight);
   }
 
   // objects to load data into and fill new tree with
@@ -298,6 +324,7 @@ int main(int argc, char ** argv)
   float   * branch_twkdials_ptr  [n_params];
 
   // set up streamlined weight loading
+  wght_tree->Branch("weights",  &branch_weight_array);
   for (int itk = 0; itk < gOptNTwk; itk++) {
     wght_list[itk]->SetBranchAddress("weights",&branch_weights_ptr[itk]);
   }
@@ -313,7 +340,7 @@ int main(int argc, char ** argv)
 
     // create branch
     wght_tree->Branch(twk_dial_brnch_name.str().c_str(), branch_twkdials_array[ip]);
-    LOG("grwghtcov", pINFO) << "New branch : " << twk_dial_brnch_name.str();
+    LOG("grwghtcov", pINFO) << "Creating tweak branch : " << twk_dial_brnch_name.str();
  
     // set up loading directly into TArrayF
     for (int i=0; i < n_tweaks; i++) { 
@@ -344,13 +371,16 @@ int main(int argc, char ** argv)
   for (int itk = 0; itk < gOptNTwk; itk++) {
     tmpName.str("");
     tmpName << "_temporary_rwght." <<itk <<"." <<gOptRunKey <<".root";
-    remove(tmpName.str().c_str());
+    if( remove(tmpName.str().c_str()) != 0 )
+    { LOG("grwghtcov", pWARN) << "Could not delete temporary file : " << tmpName.str(); }
+    //else 
+    //{ LOG("grwghtcov", pINFO) << "Deleted temporary file : " << tmpName.str(); }
   }
 
   // free memory
-  wght_tree = 0;
   wght_file->Close();
   //delete wght_tree;
+  wght_tree = 0;
   delete wght_file;
   for (int ipr = 0; ipr < n_params; ipr++) {
     delete branch_twkdials_array[ipr];
@@ -512,6 +542,11 @@ void GetEventRange(Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nlast)
 //_________________________________________________________________________________
 void GetCorrelationMatrix(string fname, TMatrixD *& cmat)
 {
+  //
+  // Loads a ROOT file containing only a TMatrixD
+  // Reads the covariance matrix and operates to give correlation^-1
+  // 
+
   // open file and prepare for loading
   TFile * fin = new TFile(fname.c_str(),"READ");
   TKey * fkey;
@@ -530,13 +565,14 @@ void GetCorrelationMatrix(string fname, TMatrixD *& cmat)
     gAbortingInErr = true;
     exit(1);
   }
-  if (inmat->GetNrows() != inmat->GetNcols()) { // does this check even work?
+  if (inmat->GetNrows() != inmat->GetNcols()) {
     LOG("grwghtcov", pFATAL) << "Covariance matrix not square - Exiting";
     gAbortingInErr = true;
     exit(1);
   }
 
   // Convert covariance to correlation
+  // This operation is identity transformation if we started with correlation
   TMatrixD tmpmat = TMatrixD(*inmat);
   // Diag = Diag(Cov)
   // set off-diagonals to zero and take 1/square root of diagonals
@@ -550,30 +586,32 @@ void GetCorrelationMatrix(string fname, TMatrixD *& cmat)
   // Cor = Diag^(-1/2).Cov.Diag^(-1/2)
   TMatrixD sigmat = TMatrixD(tmpmat);
   tmpmat = TMatrixD(*inmat,TMatrixD::kMult,sigmat);
-  cmat = new TMatrixD(sigmat,TMatrixD::kMult,tmpmat);
+  cmat = new TMatrixD(TMatrixD::kInverted,TMatrixD(sigmat,TMatrixD::kMult,tmpmat));
 
   delete inmat;
   return;
 }
 //_________________________________________________________________________________
-void GenerateTweaks(int n_params, float * twk, TDecompChol & dchol)
+void GenerateTweaks(int n_params, float * twk, TDecompLU & dlu)
 {
+  //
+  // Generate a set of random tweaks subject to error ellipse constraint
+  // Starts from randomizing input vector
+  // All preprocessing of LU Decomposition is prior to calling GenerateTweaks
+  //
   RandomGen *rnd = RandomGen::Instance();
   LOG("grwghtcov", pINFO) << "Generating tweaks";
 
   double dvec[(const int) n_params];      // array of values
   for(int i=0;i<n_params;i++)
-    { dvec[i] = rnd->RndGen().Rndm(); }   // randomize
+    { dvec[i] = rnd->RndGen().Rndm()*2.-1.; }   // randomize (-1,1)
 
-  TVectorD tvec(n_params,(double *)dvec); // set to random array
-  tvec *= (1/TMath::Sqrt(tvec.Norm2Sqr()));      // normalize
-  dchol.GetMatrix().Print();
-  tvec.Print();
+  TVectorD tvec(n_params,(double *)dvec);    // set to random array
+  tvec *= (1/TMath::Sqrt(tvec.Norm2Sqr()));  // normalize
+  //tvec.Print();
 
   // solve for correlated tweaks - result saved to tvec
-  if(!dchol.Solve(tvec)) { LOG("grwghtcov", pINFO) <<"Solve failed"; }
-  tvec *= (1/TMath::Sqrt(tvec.Norm2Sqr()));      // normalize
-  tvec.Print();
+  if(!dlu.Solve(tvec)) { LOG("grwghtcov", pINFO) <<"Solve failed"; }
   for(int i=0;i<n_params;i++) 
     { twk[i] = (float) tvec(i); }  // export to twk
 
