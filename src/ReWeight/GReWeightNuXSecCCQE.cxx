@@ -103,15 +103,6 @@ bool GReWeightNuXSecCCQE::IsHandled(GSyst_t syst)
        }
        break;
 
-     case ( kXSecTwkDial_ZNormCCQE    ) :
-       if(fMode==kModeNormAndMaShape && strcmp(fFFModel.c_str(),kModelDipole) == 0)
-       { 
-          handle = true;  
-       } else { 
-          handle = false; 
-       }
-       break;
-
      case ( kXSecTwkDial_MaCCQEshape ) :
        if(fMode==kModeNormAndMaShape && strcmp(fFFModel.c_str(),kModelDipole) == 0)
        { 
@@ -124,6 +115,15 @@ bool GReWeightNuXSecCCQE::IsHandled(GSyst_t syst)
      case ( kXSecTwkDial_MaCCQE ) :
        if(fMode==kModeMa && strcmp(fFFModel.c_str(),kModelDipole) == 0)
        {
+          handle = true;  
+       } else { 
+          handle = false; 
+       }
+       break;
+
+     case ( kXSecTwkDial_ZNormCCQE    ) :
+       if(fMode==kModeZExp && strcmp(fFFModel.c_str(),kModelZExp) == 0)
+       { 
           handle = true;  
        } else { 
           handle = false; 

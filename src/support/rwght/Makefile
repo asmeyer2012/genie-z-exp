@@ -15,7 +15,7 @@ include $(GENIE)/src/make/Make.include
 GENIE_LIBS  = $(shell $(GENIE)/src/scripts/setup/genie-config --libs)
 LIBRARIES  := $(GENIE_LIBS) $(LIBRARIES) $(CERN_LIBRARIES)
 
-TGT = gRwght1Scan gRwghtZExpAxFF 
+TGT = gRwght1Scan gRwghtZExpAxFF gRwghtCovariance
 
 all: $(TGT)
 
@@ -27,14 +27,24 @@ gRwghtZExpAxFF: FORCE
 	$(CXX) $(CXXFLAGS) -c gRwghtZExpAxFF.cxx $(INCLUDES)
 	$(LD) $(LDFLAGS) gRwghtZExpAxFF.o $(LIBRARIES) -o $(GENIE_BIN_PATH)/grwghtzexpaxff
 
+gRwghtCovariance: FORCE
+	$(CXX) $(CXXFLAGS) -c gRwghtCovariance.cxx $(INCLUDES)
+	$(LD) $(LDFLAGS) gRwghtCovariance.o $(LIBRARIES) -o $(GENIE_BIN_PATH)/grwghtcov
+
 purge: FORCE
 	$(RM) *.o *~ core 
 
 clean: FORCE
-	$(RM) *.o *~ core $(GENIE_BIN_PATH)/grwght1scan $(GENIE_BIN_PATH)/grwghtzexpaxff
+	$(RM) *.o *~ core
+	$(GENIE_BIN_PATH)/grwght1scan
+	$(GENIE_BIN_PATH)/grwghtzexpaxff
+	$(GENIE_BIN_PATH)/grwghtcov
 
 distclean: FORCE
-	$(RM) $(GENIE_BIN_INSTALLATION_PATH)/grwght1scan $(GENIE_BIN_INSTALLATION_PATH)/grwghtzexpaxff
+	$(RM)
+	$(GENIE_BIN_INSTALLATION_PATH)/grwght1scan
+	$(GENIE_BIN_INSTALLATION_PATH)/grwghtzexpaxff
+	$(GENIE_BIN_INSTALLATION_PATH)/grwghtcov
 
 FORCE:
 
