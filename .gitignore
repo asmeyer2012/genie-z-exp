@@ -29,4 +29,21 @@
 *.out
 *.app
 
+# Specific GENIE directories
+bin/*
+config/*
+data/*
+lib/*
+src/*
+.svn/*
+AUTHORS
+CITATION
+LICENSE
+VERSION
+build-env.log
+configure
+configure-genie
+Makefile
+setup-genie
+
 
