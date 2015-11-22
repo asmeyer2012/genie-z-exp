@@ -318,13 +318,13 @@ int main(int argc, char ** argv)
   }
 
   // objects to load data into and fill new tree with
-  TArrayF   branch_weight_array(gOptNTwk);
-  float   * branch_weights_ptr = branch_weight_array.GetArray();
+  TArrayF   branch_weights_array(gOptNTwk);
+  float   * branch_weights_ptr = branch_weights_array.GetArray();
   TArrayF * branch_twkdials_array[n_params];
   float   * branch_twkdials_ptr  [n_params];
 
   // set up streamlined weight loading
-  wght_tree->Branch("weights",  &branch_weight_array);
+  wght_tree->Branch("weights",  &branch_weights_array);
   for (int itk = 0; itk < gOptNTwk; itk++) {
     wght_list[itk]->SetBranchAddress("weights",&branch_weights_ptr[itk]);
   }

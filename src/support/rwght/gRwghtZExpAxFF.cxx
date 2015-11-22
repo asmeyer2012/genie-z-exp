@@ -48,6 +48,7 @@
 #include <TTree.h>
 #include <TArrayF.h>
 
+#include "Algorithm/AlgConfigPool.h"
 #include "Conventions/Controls.h"
 #include "EVGCore/EventRecord.h"
 #include "Ntuple/NtpMCFormat.h"
@@ -385,6 +386,23 @@ void GetCommandLineArgs(int argc, char ** argv)
     // split into sections of min,max,inc(rement)
     vector<string> coefrange = utils::str::Split(coef, ",");
     gOptKmaxInc = coefrange.size();
+    if (gOptKmaxInc > MAX_COEF)
+    {
+      LOG("rwghtzexpaxff", pFATAL) 
+        << "Too many coefficients: increase MAX_COEF in source code and recompile";
+      exit(1);
+    }
+    //AlgConfigPool * confp = AlgConfigPool::Instance();
+    //const Registry * gc = confp->GlobalParameterList();
+    //int kDef = fConfig->GetIntDef("QEL-Kmax",gc->GetInt("QEL-Kmax"));
+    //else if (gOptKmaxInc > kDef)
+    //{
+    //  LOG("rwghtzexpaxff", pFATAL) 
+    //    << "Too many coefficients:
+    //        requested number of coefficients is more than defined in UserPhysicsOptions.xml";
+    //  exit(1);
+    //}
+
     LOG("rwghtzexpaxff", pINFO) << "Largest coefficient to tweak : " << gOptKmaxInc;
     for (int ik = 0;ik<gOptKmaxInc;ik++)
     {
