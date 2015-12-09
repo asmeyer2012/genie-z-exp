@@ -18,12 +18,16 @@ WeinbergAngle            double   Yes        Weinberg angle              GPL: We
 -->
 
   <param_set name="Default"> 
-     <param type="alg" name="AxialFormFactorModel"> genie::DipoleAxialFormFactorModel/Default </param>
+     <param type="alg" name="AxialFormFactorModel"> genie::ZExpAxialFormFactorModel/Default </param>
   </param_set>
 
   <param_set name="Dipole"> 
      <param type="alg" name="ElasticFormFactorsModel"> genie::DipoleELFormFactorsModel/Default </param>
      <param type="alg" name="AxialFormFactorModel"> genie::DipoleAxialFormFactorModel/Default </param>
+  </param_set>
+
+  <param_set name="ZExp"> 
+     <param type="alg" name="AxialFormFactorModel"> genie::ZExpAxialFormFactorModel/Default </param>
   </param_set>
 
 </alg_conf>
