@@ -55,6 +55,7 @@ typedef enum EGSyst {
   kXSecTwkDial_ZExpA2CCQE,        ///< tweak Z-expansion coefficient 2, affects dsigma(CCQE)/dQ2 both in shape and normalization
   kXSecTwkDial_ZExpA3CCQE,        ///< tweak Z-expansion coefficient 3, affects dsigma(CCQE)/dQ2 both in shape and normalization
   kXSecTwkDial_ZExpA4CCQE,        ///< tweak Z-expansion coefficient 4, affects dsigma(CCQE)/dQ2 both in shape and normalization
+  kXSecTwkDial_AxFFCCQEshape,     ///< tweak axial nucleon form factors (dipole -> z-expansion) - shape only effect of dsigma(CCQE)/dQ2
   kXSecTwkDial_VecFFCCQEshape,    ///< tweak elastic nucleon form factors (BBA/default -> dipole) - shape only effect of dsigma(CCQE)/dQ2
   // Resonance neutrino-production tweaking parameters:
   kXSecTwkDial_NormCCRES,         ///< tweak CCRES normalization
@@ -180,6 +181,7 @@ public:
      case ( kXSecTwkDial_ZExpA2CCQE       ) : return "ZExpA2CCQE";           break;
      case ( kXSecTwkDial_ZExpA3CCQE       ) : return "ZExpA3CCQE";           break;
      case ( kXSecTwkDial_ZExpA4CCQE       ) : return "ZExpA4CCQE";           break;
+     case ( kXSecTwkDial_AxFFCCQEshape    ) : return "AxFFCCQEshape";        break;
      case ( kXSecTwkDial_VecFFCCQEshape   ) : return "VecFFCCQEshape";       break;
      case ( kXSecTwkDial_NormCCRES        ) : return "NormCCRES";            break;
      case ( kXSecTwkDial_MaCCRESshape     ) : return "MaCCRESshape";         break;
@@ -262,6 +264,7 @@ public:
        kXSecTwkDial_ZExpA2CCQE,        
        kXSecTwkDial_ZExpA3CCQE,        
        kXSecTwkDial_ZExpA4CCQE,        
+       kXSecTwkDial_AxFFCCQEshape,
        kXSecTwkDial_VecFFCCQEshape,
        kXSecTwkDial_NormCCRES,    
        kXSecTwkDial_MaCCRESshape, 
