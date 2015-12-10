@@ -72,6 +72,7 @@
 #include <TMath.h>
 #include <TMatrixD.h>
 #include <TTree.h>
+#include <TRandom.h>
 
 #include "Conventions/Controls.h"
 #include "EVGCore/EventRecord.h"
@@ -111,6 +112,13 @@ void GetCorrelationMatrix(string fname, TMatrixD *& cmat);
 void GenerateTweaks      (int n_params, float * twk, TDecompLU & dlu);
 void AdoptWeightCalcs    (vector<GSyst_t> lsyst, GReWeight & rw);
 bool FindIncompatibleSystematics(vector<GSyst_t> lsyst);
+
+TMatrixD CholeskyDecomposition(TMatrixD& cov);
+TVectorD CholeskyGenerateCorrelatedParams(TMatrixD& Lch, TVectorD& mean);
+TVectorD CholeskyGenerateCorrelatedParams(TMatrixD& Lch, TVectorD& mean, TVectorD& g_uncorrelated);
+TVectorD CholeskyGenerateCorrelatedParamVariations(TMatrixD& Lch);
+//// not sure what these are supposed to do...
+//TVectorD CholeskyCalculateCorrelatedParamVariations(TMatrixD& Lch, TVectorD& g);
 
 vector<GSyst_t> gOptVSyst;
 string   gOptInpFilename;
@@ -599,22 +607,27 @@ void GenerateTweaks(int n_params, float * twk, TDecompLU & dlu)
   // Starts from randomizing input vector
   // All preprocessing of LU Decomposition is prior to calling GenerateTweaks
   //
-  RandomGen *rnd = RandomGen::Instance();
+  TRandom *tRnd = new TRandom(); // to access normal distribution
   LOG("grwghtcov", pINFO) << "Generating tweaks";
+  double a,b;
 
-  double dvec[(const int) n_params];      // array of values
-  for(int i=0;i<n_params;i++)
-    { dvec[i] = rnd->RndGen().Rndm()*2.-1.; }   // randomize (-1,1)
+  double d_uncor[n_params]; // array of random values
+  for(int i=0;i<(n_params+1)/2;i++)
+    {
+      tRnd->Rannor(a,b); // generates two normal-distributed random numbers at a time
+      d_uncor[2*i] = a;
+      if(2*i+1 < n_params) { d_uncor[2*i+1] = b; }
+    }
 
-  TVectorD tvec(n_params,(double *)dvec);    // set to random array
+  TVectorD tvec(n_params,(double *)d_uncor);    // set to random array
   tvec *= (1/TMath::Sqrt(tvec.Norm2Sqr()));  // normalize
   //tvec.Print();
 
   // solve for correlated tweaks - result saved to tvec
   if(!dlu.Solve(tvec)) { LOG("grwghtcov", pINFO) <<"Solve failed"; }
+
   for(int i=0;i<n_params;i++) 
     { twk[i] = (float) tvec(i); }  // export to twk
-
   return;
 }
 //_________________________________________________________________________________
@@ -866,3 +879,75 @@ void PrintSyntax(void)
      << "    [-o output_weights_file]";
 }
 //_________________________________________________________________________________
+//_________________________________________________________________________________
+// Attempt to recreate Costas's Cholesky Decomposition routines
+//_________________________________________________________________________________
+TMatrixD CholeskyDecomposition(TMatrixD& cov)
+{
+  // Take a covariance matrix and return the lower-triangular matrix of the
+  // Cholesky decomposition
+  //
+  // Would be more efficient to save upper-triangular rather than lower, left
+  // as is for compatibility
+
+  TMatrixD cInv(TMatrixD::kInverted,cov);
+  TDecompChol tChol(cInv);
+  tChol.Decompose();
+  TMatrixD Lch(TMatrixD::kTransposed,tChol.GetU());
+  return Lch;
+}
+//_________________________________________________________________________________
+TVectorD CholeskyGenerateCorrelatedParams(TMatrixD& Lch, TVectorD& mean)
+{
+  // Return a set of correlated parameters using a Cholesky decomposition to solve.
+  // Generates an uncorrelated vector with random direction, norm randomized with
+  // peak at 1.
+  //
+  // Max abs of randomized vector = 1, truncation introduces problems for reweighting,
+  // how do we address this?
+
+  //RandomGen *rnd = RandomGen::Instance();
+  TRandom *tRnd = new TRandom(); // to access normal distribution
+  const int n_params = (const int) Lch.GetNrows();
+  double a,b;
+  double d_uncor[n_params]; // array of random values
+
+  for(int i=0;i<(n_params+1)/2;i++)
+    {
+      // randomize vector direction, all entries are normally distributed about 0
+      tRnd->Rannor(a,b); // generates two normal-distributed random numbers at a time
+      d_uncor[2*i] = a;
+      if(2*i+1 < n_params) { d_uncor[2*i+1] = b; }
+    }
+  tRnd->Rannor(a,b); // generate the vector norm
+
+  TVectorD g_uncor(n_params,(double *)d_uncor);  // set to random array
+  g_uncor *= (a/TMath::Sqrt(g_uncor.Norm2Sqr()));  // fix norm to be normally distributed
+
+  return CholeskyGenerateCorrelatedParams(Lch,mean,g_uncor);
+}
+//_________________________________________________________________________________
+TVectorD CholeskyGenerateCorrelatedParams(TMatrixD& Lch, TVectorD& mean, TVectorD& g_uncorrelated)
+{
+  // This would run faster if we weren't recreating Cholesky decomposition
+  // every time. Maybe that's okay since this will be small cost compared to
+  // reweighting.
+  //
+  // Return a set of correlated parameters using a Cholesky decomposition to solve.
+  // Generates a random uncorrelated vector.
+  TDecompLU tLU(Lch);
+  TVectorD soln(g_uncorrelated); // copy g_uncorrelated to another vector
+  tLU.TransSolve(soln); // L^T.soln = soln'; transpose solve; solution is saved to soln
+
+  return soln + mean;
+}
+//_________________________________________________________________________________
+/*TVectorD CholeskyGenerateCorrelatedParamVariations(TMatrixD& Lch)
+{
+  // not sure what this is supposed to do
+}*/
+//_________________________________________________________________________________
+/*TVectorD CholeskyCalculateCorrelatedParamVariations(TMatrixD& Lch, TVectorD& g)
+{
+  // not sure what this is supposed to do
+}*/
