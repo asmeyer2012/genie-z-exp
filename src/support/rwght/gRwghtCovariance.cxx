@@ -116,8 +116,8 @@ bool FindIncompatibleSystematics(vector<GSyst_t> lsyst);
 TMatrixD CholeskyDecomposition(TMatrixD& cov);
 TVectorD CholeskyGenerateCorrelatedParams(TMatrixD& Lch, TVectorD& mean);
 TVectorD CholeskyGenerateCorrelatedParams(TMatrixD& Lch, TVectorD& mean, TVectorD& g_uncorrelated);
-TVectorD CholeskyGenerateCorrelatedParamVariations(TMatrixD& Lch);
 //// not sure what these are supposed to do...
+//TVectorD CholeskyGenerateCorrelatedParamVariations(TMatrixD& Lch);
 //TVectorD CholeskyCalculateCorrelatedParamVariations(TMatrixD& Lch, TVectorD& g);
 
 vector<GSyst_t> gOptVSyst;
@@ -129,6 +129,7 @@ Long64_t gOptNEvt2;
 int      gOptRunKey= 0;
 int      gOptNSyst = 0;
 int      gOptNTwk  = 0;
+TRandom *tRnd = new TRandom(); // to access normal distribution
 
 //___________________________________________________________________
 int main(int argc, char ** argv)
@@ -353,6 +354,7 @@ int main(int argc, char ** argv)
     // set up loading directly into TArrayF
     for (int i=0; i < n_tweaks; i++) { 
       wght_list[i]->SetBranchAddress(twk_dial_brnch_name.str().c_str(),&branch_twkdials_ptr[ip][i]);
+      //LOG("grwghtcov", pINFO) << "Loading tweak value : "<<branch_twkdials_array[ip]->fArray[i];
     }
   }
  
@@ -607,7 +609,6 @@ void GenerateTweaks(int n_params, float * twk, TDecompLU & dlu)
   // Starts from randomizing input vector
   // All preprocessing of LU Decomposition is prior to calling GenerateTweaks
   //
-  TRandom *tRnd = new TRandom(); // to access normal distribution
   LOG("grwghtcov", pINFO) << "Generating tweaks";
   double a,b;
 
@@ -618,9 +619,10 @@ void GenerateTweaks(int n_params, float * twk, TDecompLU & dlu)
       d_uncor[2*i] = a;
       if(2*i+1 < n_params) { d_uncor[2*i+1] = b; }
     }
+  tRnd->Rannor(a,b); // generate one more random number for norm
 
   TVectorD tvec(n_params,(double *)d_uncor);    // set to random array
-  tvec *= (1/TMath::Sqrt(tvec.Norm2Sqr()));  // normalize
+  tvec *= (a/TMath::Sqrt(tvec.Norm2Sqr()));  // normalize
   //tvec.Print();
 
   // solve for correlated tweaks - result saved to tvec

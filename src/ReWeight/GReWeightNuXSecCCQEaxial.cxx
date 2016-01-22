@@ -10,11 +10,14 @@
           Jim Dobson <J.Dobson07 \at imperial.ac.uk>
           Imperial College London
 
+          Aaron Meyer <asmeyer \at uchicago.edu>
+          University of Chicago/Fermilab
+
  For the class documentation see the corresponding header file.
 
  Important revisions after version 2.0.0 :
- @ May 24, 2010 - CA
-   First included in v2.7.1.
+ @ Dec 14, 2015 - AM
+   First version, based on GReWeightNuXSecCCQEvec.cxx
 
 */
 //____________________________________________________________________________
