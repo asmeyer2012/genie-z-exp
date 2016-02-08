@@ -9,14 +9,15 @@
          The covariance matrix should be in the form a ROOT file containing
          only a TMatrixD object which is square and symmetric.
          It outputs a ROOT file containing a tree with an entry for every 
-         input event. Each such tree entry contains a TArrayF of all computed 
-         weights and TArrayF for each requested systematic of all of the
+         input event. Each such tree entry contains a TArrayD of all computed 
+         weights and TArrayD for each requested systematic of all of the
          corresponding randomly generated tweak dial values.
 
 \syntax  grwghtcov \
            -f input_event_file 
            -c input_covariance_file
            -s systematic1[,systematic2[,...]] 
+           -v central_value1[,central_value2[,...]]
            -t n_twk_dial_values
           [-n n1[,n2]] 
           [-r run_key]
@@ -34,6 +35,10 @@
             Specifies the systematic parameters to tweak.
             See $GENIE/src/ReWeight/GSyst.h for a list of parameters and
             their corresponding label, which is what should be input here.
+         -v
+            Central values specified in $GENIE/config/UserPhysicsOptions.xml
+            for the reweighted parameters. Assigns uncertainties based on
+            covariance matrix diagonal. Should be automated, but cannot for now.
          -t 
             Number of random drawings of tweak values between -1 and 1.
             Values for tweaks respect the covariance of systematics
@@ -63,9 +68,9 @@
 //____________________________________________________________________________
 
 
-#include <TArrayF.h>
-#include <TDecompChol.h>
-#include <TDecompLU.h>
+#include <TArrayD.h>
+//#include <TDecompChol.h>
+//#include <TDecompLU.h>
 #include <TFile.h>
 #include <TKey.h>
 #include <TList.h>
@@ -99,28 +104,23 @@
 #include "ReWeight/GSystSet.h"
 #include "ReWeight/GSystUncertainty.h"
 #include "Utils/CmdLnArgParser.h"
+#include "Utils/MathUtils.h"
 #include "Utils/StringUtils.h"
 
 using namespace genie;
 using namespace genie::rew;
-using std::ostringstream;
+using namespace genie::utils::math;
+using std::stringstream;
 
 void PrintSyntax();
 void GetEventRange       (Long64_t nev_in_file, Long64_t & nfirst, Long64_t & nlast);
 void GetCommandLineArgs  (int argc, char ** argv);
 void GetCorrelationMatrix(string fname, TMatrixD *& cmat);
-void GenerateTweaks      (int n_params, float * twk, TDecompLU & dlu);
 void AdoptWeightCalcs    (vector<GSyst_t> lsyst, GReWeight & rw);
 bool FindIncompatibleSystematics(vector<GSyst_t> lsyst);
 
-TMatrixD CholeskyDecomposition(TMatrixD& cov);
-TVectorD CholeskyGenerateCorrelatedParams(TMatrixD& Lch, TVectorD& mean);
-TVectorD CholeskyGenerateCorrelatedParams(TMatrixD& Lch, TVectorD& mean, TVectorD& g_uncorrelated);
-//// not sure what these are supposed to do...
-//TVectorD CholeskyGenerateCorrelatedParamVariations(TMatrixD& Lch);
-//TVectorD CholeskyCalculateCorrelatedParamVariations(TMatrixD& Lch, TVectorD& g);
-
 vector<GSyst_t> gOptVSyst;
+vector<double>  gOptVCentVal;
 string   gOptInpFilename;
 string   gOptInpCovariance;
 string   gOptOutFilename;
@@ -171,21 +171,15 @@ int main(int argc, char ** argv)
   //
 
   TMatrixD *cmat = NULL;
-  // Gets Cor^-1, which is needed in decompositions
+  // Gets Cor, which is needed in decompositions
+  // Assumed errors from covariance are stored in one sigma errors for parameters
   GetCorrelationMatrix(gOptInpCovariance,cmat);
-  TDecompChol dchol(*cmat);
-  if(!dchol.Decompose()) {
-    LOG("grwghtcov", pFATAL) << "Could not decompose correlation matrix";
-    gAbortingInErr = true;
-    exit(1);
-  }
-  TDecompLU dlu(dchol.GetU());
-  //LOG("grwghtcov", pNOTICE) << "Correlation Matrix:";
-  //dchol.GetMatrix().Print();
-  //LOG("grwghtcov", pNOTICE) << "Upper Triangle:";
-  //dchol.GetU().Print();
-  //LOG("grwghtcov", pNOTICE) << "Decomposed Matrix:";
-  //dlu.Print();
+  TMatrixD lTri = CholeskyDecomposition(*cmat);
+
+  LOG("grwghtcov", pNOTICE) << "Correlation matrix:";
+  cmat->Print();
+  //LOG("grwghtcov", pNOTICE) << "Lower triangular matrix:";
+  //lTri.Print();
 
   NtpMCEventRecord * mcrec = 0;
   tree->SetBranchAddress("gmcrec", &mcrec);
@@ -226,19 +220,19 @@ int main(int argc, char ** argv)
   // Declare the weights, twkvals
   const int n_params = (const int) gOptNSyst;
   const int n_tweaks = (const int) gOptNTwk;
-  float twkvals [n_params];
+  TVectorD twkvals(n_params);
 
   // Initialize
-  for (int ipr = 0; ipr < n_params; ipr++) { twkvals[ipr] = 0.; }
+  for (int ipr = 0; ipr < n_params; ipr++) { twkvals(ipr) = 0.; }
 
   // objects to pass elements into tree
   int     branch_eventnum = 0;
-  float   branch_weight   = 0.;
+  double  branch_weight   = 0.;
 
   // objects used in processing
   vector<GSyst_t>::iterator it;
-  ostringstream twk_dial_brnch_name;
-  ostringstream tmpName;
+  stringstream twk_dial_brnch_name;
+  stringstream tmpName;
   int ip;
 
   //
@@ -263,25 +257,26 @@ int main(int argc, char ** argv)
 
     // Construct multiple branches to streamline loading later
     // Load tweaks into reweighting
-    GenerateTweaks(n_params, twkvals, dlu);
+    //GenerateTweaks(n_params, twkvals, dlu);
+    twkvals = CholeskyGenerateCorrelatedParamVariations(lTri);
     ip = 0;
     for (it = gOptVSyst.begin();it != gOptVSyst.end(); it++, ip++) {
       twk_dial_brnch_name.str("");
       twk_dial_brnch_name << "twk_" << GSyst::AsString(*it);
       // each array element individually
-      wght_tree->Branch(twk_dial_brnch_name.str().c_str(), &twkvals[ip]);
+      wght_tree->Branch(twk_dial_brnch_name.str().c_str(), &twkvals(ip));
       LOG("grwghtcov", pINFO) << "Setting systematic : "
-        <<GSyst::AsString(*it) <<", " <<twkvals[ip];
-      syst.Set(*it,twkvals[ip]);
+        <<GSyst::AsString(*it) <<", " <<twkvals(ip);
+      syst.Set(*it,twkvals(ip));
     }
     rw.Reconfigure();
 
-    ostringstream str_wght;
+    stringstream str_wght;
     str_wght.str("");
     str_wght << ", parameter tweaks : ";
     for (int ipr=0; ipr < n_params; ipr++) {
        if (ipr > 0) str_wght << ", ";
-       str_wght << ipr << " -> " << twkvals[ipr];
+       str_wght << ipr << " -> " << twkvals(ipr);
     }
 
     for(int iev = nfirst; iev <= nlast; iev++) {
@@ -327,10 +322,10 @@ int main(int argc, char ** argv)
   }
 
   // objects to load data into and fill new tree with
-  TArrayF   branch_weights_array(gOptNTwk);
-  float   * branch_weights_ptr = branch_weights_array.GetArray();
-  TArrayF * branch_twkdials_array[n_params];
-  float   * branch_twkdials_ptr  [n_params];
+  TArrayD   branch_weights_array(gOptNTwk);
+  double  * branch_weights_ptr = branch_weights_array.GetArray();
+  TArrayD * branch_twkdials_array[n_params];
+  double  * branch_twkdials_ptr  [n_params];
 
   // set up streamlined weight loading
   wght_tree->Branch("weights",  &branch_weights_array);
@@ -343,15 +338,15 @@ int main(int argc, char ** argv)
     twk_dial_brnch_name.str("");
     twk_dial_brnch_name << "twk_" << GSyst::AsString(*it);
 
-    // access TArrayF memory directly
-    branch_twkdials_array[ip] = new TArrayF(gOptNTwk); 
+    // access TArrayD memory directly
+    branch_twkdials_array[ip] = new TArrayD(gOptNTwk); 
     branch_twkdials_ptr[ip] = branch_twkdials_array[ip]->GetArray();
 
     // create branch
     wght_tree->Branch(twk_dial_brnch_name.str().c_str(), branch_twkdials_array[ip]);
     LOG("grwghtcov", pINFO) << "Creating tweak branch : " << twk_dial_brnch_name.str();
  
-    // set up loading directly into TArrayF
+    // set up loading directly into TArrayD
     for (int i=0; i < n_tweaks; i++) { 
       wght_list[i]->SetBranchAddress(twk_dial_brnch_name.str().c_str(),&branch_twkdials_ptr[ip][i]);
       //LOG("grwghtcov", pINFO) << "Loading tweak value : "<<branch_twkdials_array[ip]->fArray[i];
@@ -490,6 +485,37 @@ void GetCommandLineArgs(int argc, char ** argv)
     exit(1);
   }
 
+  // systematic central values:
+  if( parser.OptionExists('v') ) {
+    LOG("grwghtcov", pINFO) << "Reading parameter central values";
+    string insyst = parser.ArgAsString('v');
+    vector<string> lval = utils::str::Split(insyst, ",");
+    vector<string>::iterator it;
+    stringstream stmp;
+    double dtmp;
+    int ik = 0;
+    for(it=lval.begin();it != lval.end();it++,ik++)
+    {
+      stmp.str("");
+      stmp << *it;  // read in string
+      stmp >> dtmp; // read out double
+      gOptVCentVal.push_back(dtmp);
+      LOG("grwghtcov",pINFO)<<"Read central value "<<ik+1<<" : "<< dtmp;
+    }
+    // check size
+    if (gOptNSyst != (int)gOptVCentVal.size()) {
+      LOG("rwghtcov", pFATAL) 
+        << "Number of systematic central values does not match number of systematics- Exiting";
+      PrintSyntax();
+      exit(1);
+    }
+  } else {
+    LOG("rwghtcov", pFATAL) 
+      << "Unspecified systematic central values - Exiting";
+    PrintSyntax();
+    exit(1);
+  }
+
   // number of tweaks:
   if( parser.OptionExists('t') ) {
     LOG("grwghtcov", pINFO) << "Reading number of tweaks";
@@ -554,8 +580,13 @@ void GetCorrelationMatrix(string fname, TMatrixD *& cmat)
 {
   //
   // Loads a ROOT file containing only a TMatrixD
-  // Reads the covariance matrix and operates to give correlation^-1
+  // Reads a covariance/correlation matrix and returns correlation matrix
   // 
+
+  // Load covariance matrix diagonal into uncertainties
+  GSystUncertainty * unc = GSystUncertainty::Instance();
+  vector<GSyst_t>::iterator it;
+  vector<double>::iterator itd;
 
   // open file and prepare for loading
   TFile * fin = new TFile(fname.c_str(),"READ");
@@ -580,56 +611,40 @@ void GetCorrelationMatrix(string fname, TMatrixD *& cmat)
     gAbortingInErr = true;
     exit(1);
   }
+  if (inmat->GetNrows() != gOptNSyst ){
+    LOG("grwghtcov", pFATAL) << "Number of systematics does not match covariance matrix size- Exiting";
+    gAbortingInErr = true;
+    exit(1);
+  }
 
   // Convert covariance to correlation
-  // This operation is identity transformation if we started with correlation
   TMatrixD tmpmat = TMatrixD(*inmat);
+
   // Diag = Diag(Cov)
   // set off-diagonals to zero and take 1/square root of diagonals
   // is there an easier way?
-  for(int i=0;i<tmpmat.GetNrows();i++){ 
+  int i=0;
+  itd = gOptVCentVal.begin();
+  for (it = gOptVSyst.begin();it != gOptVSyst.end(); it++, itd++, i++) {
     for(int j=0;j<tmpmat.GetNcols();j++){
       if(i!=j) { tmpmat(i,j) = 0.; }
-      else     { tmpmat(i,j) = 1./TMath::Sqrt(tmpmat(i,j)); }
+      else     {
+        // convert diagonal entries to uncertainty
+        //LOG("grwghtcov", pINFO) <<"Setting uncertainty "<<i<<" to : "<<
+        //  TMath::Sqrt(tmpmat(i,i))/(*itd);
+        unc->SetUncertainty(*it,TMath::Sqrt(tmpmat(i,i))/(*itd),
+          TMath::Sqrt(tmpmat(i,i))/(*itd));
+        tmpmat(i,i) = 1./TMath::Sqrt(tmpmat(i,i));
+      }
     }
   }
+
   // Cor = Diag^(-1/2).Cov.Diag^(-1/2)
   TMatrixD sigmat = TMatrixD(tmpmat);
   tmpmat = TMatrixD(*inmat,TMatrixD::kMult,sigmat);
-  cmat = new TMatrixD(TMatrixD::kInverted,TMatrixD(sigmat,TMatrixD::kMult,tmpmat));
+  cmat = new TMatrixD(sigmat,TMatrixD::kMult,tmpmat);
 
   delete inmat;
-  return;
-}
-//_________________________________________________________________________________
-void GenerateTweaks(int n_params, float * twk, TDecompLU & dlu)
-{
-  //
-  // Generate a set of random tweaks subject to error ellipse constraint
-  // Starts from randomizing input vector
-  // All preprocessing of LU Decomposition is prior to calling GenerateTweaks
-  //
-  LOG("grwghtcov", pINFO) << "Generating tweaks";
-  double a,b;
-
-  double d_uncor[n_params]; // array of random values
-  for(int i=0;i<(n_params+1)/2;i++)
-    {
-      tRnd->Rannor(a,b); // generates two normal-distributed random numbers at a time
-      d_uncor[2*i] = a;
-      if(2*i+1 < n_params) { d_uncor[2*i+1] = b; }
-    }
-  tRnd->Rannor(a,b); // generate one more random number for norm
-
-  TVectorD tvec(n_params,(double *)d_uncor);    // set to random array
-  tvec *= (a/TMath::Sqrt(tvec.Norm2Sqr()));  // normalize
-  //tvec.Print();
-
-  // solve for correlated tweaks - result saved to tvec
-  if(!dlu.Solve(tvec)) { LOG("grwghtcov", pINFO) <<"Solve failed"; }
-
-  for(int i=0;i<n_params;i++) 
-    { twk[i] = (float) tvec(i); }  // export to twk
   return;
 }
 //_________________________________________________________________________________
@@ -881,75 +896,3 @@ void PrintSyntax(void)
      << "    [-o output_weights_file]";
 }
 //_________________________________________________________________________________
-//_________________________________________________________________________________
-// Attempt to recreate Costas's Cholesky Decomposition routines
-//_________________________________________________________________________________
-TMatrixD CholeskyDecomposition(TMatrixD& cov)
-{
-  // Take a covariance matrix and return the lower-triangular matrix of the
-  // Cholesky decomposition
-  //
-  // Would be more efficient to save upper-triangular rather than lower, left
-  // as is for compatibility
-
-  TMatrixD cInv(TMatrixD::kInverted,cov);
-  TDecompChol tChol(cInv);
-  tChol.Decompose();
-  TMatrixD Lch(TMatrixD::kTransposed,tChol.GetU());
-  return Lch;
-}
-//_________________________________________________________________________________
-TVectorD CholeskyGenerateCorrelatedParams(TMatrixD& Lch, TVectorD& mean)
-{
-  // Return a set of correlated parameters using a Cholesky decomposition to solve.
-  // Generates an uncorrelated vector with random direction, norm randomized with
-  // peak at 1.
-  //
-  // Max abs of randomized vector = 1, truncation introduces problems for reweighting,
-  // how do we address this?
-
-  //RandomGen *rnd = RandomGen::Instance();
-  TRandom *tRnd = new TRandom(); // to access normal distribution
-  const int n_params = (const int) Lch.GetNrows();
-  double a,b;
-  double d_uncor[n_params]; // array of random values
-
-  for(int i=0;i<(n_params+1)/2;i++)
-    {
-      // randomize vector direction, all entries are normally distributed about 0
-      tRnd->Rannor(a,b); // generates two normal-distributed random numbers at a time
-      d_uncor[2*i] = a;
-      if(2*i+1 < n_params) { d_uncor[2*i+1] = b; }
-    }
-  tRnd->Rannor(a,b); // generate the vector norm
-
-  TVectorD g_uncor(n_params,(double *)d_uncor);  // set to random array
-  g_uncor *= (a/TMath::Sqrt(g_uncor.Norm2Sqr()));  // fix norm to be normally distributed
-
-  return CholeskyGenerateCorrelatedParams(Lch,mean,g_uncor);
-}
-//_________________________________________________________________________________
-TVectorD CholeskyGenerateCorrelatedParams(TMatrixD& Lch, TVectorD& mean, TVectorD& g_uncorrelated)
-{
-  // This would run faster if we weren't recreating Cholesky decomposition
-  // every time. Maybe that's okay since this will be small cost compared to
-  // reweighting.
-  //
-  // Return a set of correlated parameters using a Cholesky decomposition to solve.
-  // Generates a random uncorrelated vector.
-  TDecompLU tLU(Lch);
-  TVectorD soln(g_uncorrelated); // copy g_uncorrelated to another vector
-  tLU.TransSolve(soln); // L^T.soln = soln'; transpose solve; solution is saved to soln
-
-  return soln + mean;
-}
-//_________________________________________________________________________________
-/*TVectorD CholeskyGenerateCorrelatedParamVariations(TMatrixD& Lch)
-{
-  // not sure what this is supposed to do
-}*/
-//_________________________________________________________________________________
-/*TVectorD CholeskyCalculateCorrelatedParamVariations(TMatrixD& Lch, TVectorD& g)
-{
-  // not sure what this is supposed to do
-}*/
