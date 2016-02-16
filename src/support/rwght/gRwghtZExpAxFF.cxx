@@ -76,7 +76,7 @@
 #include "Utils/StringUtils.h"
 
 // number of coefficient values to vary
-#define MAX_COEF 3
+#define MAX_COEF 4
 
 using namespace genie;
 using namespace genie::rew;
@@ -209,9 +209,9 @@ int main(int argc, char ** argv)
       <<ipr<<" : " << twkvals[0][ipr];
     if (gOptSigmaDefined)
     {
-      unc->SetUncertainty(gsyst,gOptSigMin[ipr],gOptSigMax[ipr]);
+      unc->SetUncertainty(gsyst,gOptSigMin[ipr-1],gOptSigMax[ipr-1]);
       LOG("rwghtzexpaxff", pNOTICE) << "Setting z-expansion sigma for param " 
-        <<ipr<<" : " << gOptSigMin[ipr] <<","<< gOptSigMax[ipr];
+        <<ipr<<" : " << gOptSigMin[ipr-1] <<","<< gOptSigMax[ipr-1];
     }
   }
 

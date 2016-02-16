@@ -79,6 +79,7 @@
 #include <TTree.h>
 #include <TRandom.h>
 
+#include "Conventions/Constants.h"
 #include "Conventions/Controls.h"
 #include "EVGCore/EventRecord.h"
 #include "Ntuple/NtpMCFormat.h"
@@ -108,6 +109,7 @@
 #include "Utils/StringUtils.h"
 
 using namespace genie;
+using namespace genie::constants;
 using namespace genie::rew;
 using namespace genie::utils::math;
 using std::stringstream;
@@ -176,8 +178,8 @@ int main(int argc, char ** argv)
   GetCorrelationMatrix(gOptInpCovariance,cmat);
   TMatrixD lTri = CholeskyDecomposition(*cmat);
 
-  LOG("grwghtcov", pNOTICE) << "Correlation matrix:";
-  cmat->Print();
+  //LOG("grwghtcov", pNOTICE) << "Correlation matrix:";
+  //cmat->Print();
   //LOG("grwghtcov", pNOTICE) << "Lower triangular matrix:";
   //lTri.Print();
 
@@ -257,16 +259,18 @@ int main(int argc, char ** argv)
 
     // Construct multiple branches to streamline loading later
     // Load tweaks into reweighting
-    //GenerateTweaks(n_params, twkvals, dlu);
     twkvals = CholeskyGenerateCorrelatedParamVariations(lTri);
+    //twkvals *= 1./(TMath::Sqrt((double)gOptNSyst)); // scale the size of the vector to avg length 1
+    //twkvals *= 1./(TMath::Sqrt((double)gOptNSyst) *
+    //  TMath::Power(2*kPi,(gOptNSyst-1)/6.) ); // scale the size of the vector to avg length 1
     ip = 0;
     for (it = gOptVSyst.begin();it != gOptVSyst.end(); it++, ip++) {
       twk_dial_brnch_name.str("");
       twk_dial_brnch_name << "twk_" << GSyst::AsString(*it);
       // each array element individually
       wght_tree->Branch(twk_dial_brnch_name.str().c_str(), &twkvals(ip));
-      LOG("grwghtcov", pINFO) << "Setting systematic : "
-        <<GSyst::AsString(*it) <<", " <<twkvals(ip);
+      //LOG("grwghtcov", pINFO) << "Setting systematic : "
+      //  <<GSyst::AsString(*it) <<", " <<twkvals(ip);
       syst.Set(*it,twkvals(ip));
     }
     rw.Reconfigure();
@@ -488,20 +492,7 @@ void GetCommandLineArgs(int argc, char ** argv)
   // systematic central values:
   if( parser.OptionExists('v') ) {
     LOG("grwghtcov", pINFO) << "Reading parameter central values";
-    string insyst = parser.ArgAsString('v');
-    vector<string> lval = utils::str::Split(insyst, ",");
-    vector<string>::iterator it;
-    stringstream stmp;
-    double dtmp;
-    int ik = 0;
-    for(it=lval.begin();it != lval.end();it++,ik++)
-    {
-      stmp.str("");
-      stmp << *it;  // read in string
-      stmp >> dtmp; // read out double
-      gOptVCentVal.push_back(dtmp);
-      LOG("grwghtcov",pINFO)<<"Read central value "<<ik+1<<" : "<< dtmp;
-    }
+    gOptVCentVal  = parser.ArgAsDoubleTokens('v',",");
     // check size
     if (gOptNSyst != (int)gOptVCentVal.size()) {
       LOG("rwghtcov", pFATAL) 
@@ -630,14 +621,18 @@ void GetCorrelationMatrix(string fname, TMatrixD *& cmat)
       if(i!=j) { tmpmat(i,j) = 0.; }
       else     {
         // convert diagonal entries to uncertainty
-        //LOG("grwghtcov", pINFO) <<"Setting uncertainty "<<i<<" to : "<<
-        //  TMath::Sqrt(tmpmat(i,i))/(*itd);
+        LOG("grwghtcov", pINFO) <<"Setting uncertainty "<<i<<" to : "<<
+          TMath::Sqrt(tmpmat(i,i))/(*itd);
+        //unc->SetUncertainty(*it,TMath::Sqrt(tmpmat(i,i)),
+        //  TMath::Sqrt(tmpmat(i,i)));
         unc->SetUncertainty(*it,TMath::Sqrt(tmpmat(i,i))/(*itd),
           TMath::Sqrt(tmpmat(i,i))/(*itd));
         tmpmat(i,i) = 1./TMath::Sqrt(tmpmat(i,i));
       }
     }
   }
+  LOG("grwghtcov", pWARN) <<"diagonal scaling matrix:";
+  tmpmat.Print();
 
   // Cor = Diag^(-1/2).Cov.Diag^(-1/2)
   TMatrixD sigmat = TMatrixD(tmpmat);
