@@ -260,9 +260,8 @@ int main(int argc, char ** argv)
     // Construct multiple branches to streamline loading later
     // Load tweaks into reweighting
     twkvals = CholeskyGenerateCorrelatedParamVariations(lTri);
-    //twkvals *= 1./(TMath::Sqrt((double)gOptNSyst)); // scale the size of the vector to avg length 1
-    //twkvals *= 1./(TMath::Sqrt((double)gOptNSyst) *
-    //  TMath::Power(2*kPi,(gOptNSyst-1)/6.) ); // scale the size of the vector to avg length 1
+    // scale the size of the vector to avg length 1
+    //twkvals *= 1./(TMath::Sqrt((double)gOptNSyst));
     ip = 0;
     for (it = gOptVSyst.begin();it != gOptVSyst.end(); it++, ip++) {
       twk_dial_brnch_name.str("");
@@ -621,18 +620,16 @@ void GetCorrelationMatrix(string fname, TMatrixD *& cmat)
       if(i!=j) { tmpmat(i,j) = 0.; }
       else     {
         // convert diagonal entries to uncertainty
-        LOG("grwghtcov", pINFO) <<"Setting uncertainty "<<i<<" to : "<<
-          TMath::Sqrt(tmpmat(i,i))/(*itd);
-        //unc->SetUncertainty(*it,TMath::Sqrt(tmpmat(i,i)),
-        //  TMath::Sqrt(tmpmat(i,i)));
+        //LOG("grwghtcov", pINFO) <<"Setting uncertainty "<<i<<" to : "<<
+        //  TMath::Sqrt(tmpmat(i,i))/(*itd);
         unc->SetUncertainty(*it,TMath::Sqrt(tmpmat(i,i))/(*itd),
           TMath::Sqrt(tmpmat(i,i))/(*itd));
         tmpmat(i,i) = 1./TMath::Sqrt(tmpmat(i,i));
       }
     }
   }
-  LOG("grwghtcov", pWARN) <<"diagonal scaling matrix:";
-  tmpmat.Print();
+  //LOG("grwghtcov", pWARN) <<"diagonal scaling matrix:";
+  //tmpmat.Print();
 
   // Cor = Diag^(-1/2).Cov.Diag^(-1/2)
   TMatrixD sigmat = TMatrixD(tmpmat);
@@ -886,6 +883,7 @@ void PrintSyntax(void)
      << "     -c input_covariance_file\n"
      << "     -t num_twk              \n"
      << "     -s syst1[,syst2[,...]]  \n"
+     << "     -v cval1[,cval2[,...]]  \n"
      << "    [-n n1[,n2]]             \n"
      << "    [-r run_key]             \n"
      << "    [-o output_weights_file]";

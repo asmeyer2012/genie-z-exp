@@ -125,11 +125,11 @@ STFC, Rutherford Appleton Laboratory
   -->
   <param type="bool"   name="QEL-Q4limit"> true  </param>
   <param type="int"    name="QEL-Kmax">    4     </param>
-  <param type="double" name="QEL-T0">     -0.57  </param>
-  <param type="double" name="QEL-Z_A1">    2.1   </param>
-  <param type="double" name="QEL-Z_A2">   -1.5   </param>
-  <param type="double" name="QEL-Z_A3">   -3.1   </param>
-  <param type="double" name="QEL-Z_A4">    3.6   </param>
+  <param type="double" name="QEL-T0">     -0.28  </param>
+  <param type="double" name="QEL-Z_A1">    2.29  </param>
+  <param type="double" name="QEL-Z_A2">   -0.6   </param>
+  <param type="double" name="QEL-Z_A3">   -3.7   </param>
+  <param type="double" name="QEL-Z_A4">    2.2   </param>
                                                                                                     <!-- 
   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   Parameter eta controlling the strange axial form factor 
