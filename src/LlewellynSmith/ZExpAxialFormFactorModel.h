@@ -57,6 +57,7 @@ private:
   bool   fQ4limit;
   int    fKmax;
   double fT0;
+  double fTcut;
   double fFA0;
   //double fZ_An[11];
   double* fZ_An;

@@ -66,11 +66,10 @@ double ZExpAxialFormFactorModel::FA(const Interaction * interaction) const
 //____________________________________________________________________________
 double ZExpAxialFormFactorModel::CalculateZ(double q2) const
 {
-  double tcut  = 9.0 * TMath::Power(constants::kPi0Mass, 2);
 
   // calculate z expansion parameter
-  double znum  = TMath::Sqrt(tcut - q2) - TMath::Sqrt(tcut - fT0);
-  double zden  = TMath::Sqrt(tcut - q2) + TMath::Sqrt(tcut - fT0);
+  double znum  = TMath::Sqrt(fTcut - q2) - TMath::Sqrt(fTcut - fT0);
+  double zden  = TMath::Sqrt(fTcut - q2) + TMath::Sqrt(fTcut - fT0);
 
   return znum/zden;
 }
@@ -226,6 +225,7 @@ void ZExpAxialFormFactorModel::LoadConfig(void)
   fQ4limit  = fConfig->GetBoolDef("QEL-Q4limit", gc->GetBool("QEL-Q4limit"));
   fKmax     = fConfig->GetIntDef ("QEL-Kmax"   , gc->GetInt ("QEL-Kmax"   ));
   fT0       = fConfig->GetDoubleDef("QEL-T0"   , gc->GetDouble("QEL-T0"   ));
+  fTcut     = fConfig->GetDoubleDef("QEL-Tcut" , gc->GetDouble("QEL-Tcut" ));
   fFA0      = fConfig->GetDoubleDef("QEL-FA0"  , gc->GetDouble("QEL-FA0"  ));
 
   assert(fKmax > 0);
