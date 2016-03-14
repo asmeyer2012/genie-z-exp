@@ -134,15 +134,17 @@ double GReWeightNuXSecCCQEaxial::CalcWeight(const genie::EventRecord & event)
   double old_weight           = event.Weight();
   double def_xsec             = event.DiffXSec();
   double zexp_xsec            = fXSecModel_zexp->XSec(interaction, kPSQ2fE);
-  double def_integrated_xsec  = fXSecModel_dpl->Integral(interaction);
-  double zexp_integrated_xsec = fXSecModel_zexp->Integral(interaction);
+  //double def_integrated_xsec  = fXSecModel_dpl->Integral(interaction);
+  //double zexp_integrated_xsec = fXSecModel_zexp->Integral(interaction);
 
-  assert(def_integrated_xsec > 0.);
-  assert(zexp_integrated_xsec > 0.);
+  //assert(def_integrated_xsec > 0.);
+  //assert(zexp_integrated_xsec > 0.);
 //  if(def_integrated_xsec <= 0 || zexp_integrated_xsec <= 0) return 1.;
 
-  double def_ratio  = def_xsec  / def_integrated_xsec;
-  double zexp_ratio = zexp_xsec / zexp_integrated_xsec;
+  //double def_ratio  = def_xsec  / def_integrated_xsec;
+  //double zexp_ratio = zexp_xsec / zexp_integrated_xsec;
+  double def_ratio  = def_xsec ;
+  double zexp_ratio = zexp_xsec;
 
   assert(def_ratio > 0.);
 //  if(def_ratio <= 0) return 1.;
