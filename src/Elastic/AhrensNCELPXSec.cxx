@@ -89,7 +89,7 @@ double AhrensNCELPXSec::XSec(
   double Ge1 = 0.5 * fkAlpha / qmv2;
   double Gm1 = 0.5 * fkAlpha * (fMuP-fMuN) / qmv2;
   //double Ga1 = -0.5 * fFa0 * (1+fEta)/ qma2;  
-  double Ga1 = -0.5 * (1+fEta) * FA;
+  double Ga1 = -0.5 * (1+(nucsign)*fEta) * FA;
 
   //-- compute form factors
   double Ge  = Ge0 + (nucsign) * Ge1;
